@@ -40,7 +40,8 @@ def main():
                 fd = l.split('\t')
                 x.append(float(fd[cfg.x_col]))
                 y.append(float(fd[cfg.y_col]))
-        pl.plot(x, y, label=fn.split('.')[0])
+        label = fn.split('/')[-1].split('.')[0]
+        pl.plot(x, y, label=label)
     pl.xlabel(cfg.xlabel)
     pl.ylabel(cfg.ylabel)
     pl.title('{0} - {1}'.format(cfg.xlabel, cfg.ylabel))
