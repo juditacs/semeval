@@ -29,7 +29,7 @@ def get_deps(stream):
 
     return sen1, sen2
 
-def get_sim(graph1, graph2):
+def graph_sim(graph1, graph2):
     all_edges = graph1.edges.union(graph2.edges)
     logging.debug('all edges: {}'.format(all_edges))
     shared_edges = graph1.edges.intersection(graph2.edges)
@@ -47,9 +47,28 @@ def get_graph(deps, wrapper, tok2lemma):
     return MachineGraph.create_from_machines(
         active_machines, max_depth=2, whitelist=wrapper.wordlist)
 
+def get_sim(sen_file, dep_file, wrapper, analyzer):
+        sen1_toks, sen2_toks = map(word_tokenize, open(sen_file).readlines())
+        sen1_ana, sen2_ana = analyzer.analyze([sen1_toks, sen2_toks])
+        tok2lemma = {"ROOT": "ROOT"}
+        for tok, ana in sen1_ana + sen2_ana:
+            tok2lemma[tok] = ana.split('||')[0].split('<')[0]
+
+        sen1_deps, sen2_deps = get_deps(file(dep_file))
+
+        graphs = (get_graph(sen1_deps, wrapper, tok2lemma),
+                  get_graph(sen2_deps, wrapper, tok2lemma))
+        for c, graph in enumerate(graphs):
+            f = open('sen{}.dot'.format(c), 'w')
+            f.write(graphs[c].to_dot())
+            f.close()
+
+        return graph_sim(graphs[0], graphs[1])
+
 def main(sens_path, deps_path, cfg_file):
 
     hunmorph_dir = os.environ['HUNMORPH_DIR']
+    print 'loading analyzer...',
     analyzer = MorphAnalyzer(
         Ocamorph(
             os.path.join(hunmorph_dir, "ocamorph"),
@@ -57,33 +76,29 @@ def main(sens_path, deps_path, cfg_file):
         Hundisambig(
             os.path.join(hunmorph_dir, "hundisambig"),
             os.path.join(hunmorph_dir, "en_wsj.model")))
-
-    tok2lemma = {"ROOT": "ROOT"}
-
-    w = Wrapper(cfg_file)
+    
+    print 'done\nloading wrapper...',
+    wrapper = Wrapper(cfg_file)
+    print 'done'
 
     if os.path.isdir(sens_path):
         assert os.path.isdir(deps_path), __USAGE__
         gold_path = os.path.join(os.environ['SEMEVAL_DATA'], 'sts_trial')
         assert os.path.isdir(gold_path), "{} does not exist".format(gold_path)
+        for sen_fn in os.listdir(sens_path):
+            print 'processing {}...'.format(sen_fn)
+            sen_path = os.path.join(sens_path, sen_fn)
+            dep_path = os.path.join(deps_path, sen_fn.replace('.sen', '.dep'))
+            sim = get_sim(sen_path, dep_path, wrapper, analyzer)
+            gold_path = os.path.join(
+                deps_path.replace('dep', 'gold'),
+                sen_fn.replace('.sen', '.gold'))
+            gold_sim = float(file(gold_path).read().strip())
+            print 'sim: {}, gold: {}'.format(sim, gold_sim)
 
     else:
         assert not os.path.isdir(deps_path), __USAGE__
-        sen1_toks, sen2_toks = map(word_tokenize, open(sens_path).readlines())
-        sen1_ana, sen2_ana = analyzer.analyze([sen1_toks, sen2_toks])
-        for tok, ana in sen1_ana + sen2_ana:
-            tok2lemma[tok] = ana.split('||')[0].split('<')[0]
-
-        sen1_deps, sen2_deps = get_deps(file(deps_path))
-
-        graphs = (get_graph(sen1_deps, w, tok2lemma),
-                  get_graph(sen2_deps, w, tok2lemma))
-        for c, graph in enumerate(graphs):
-            f = open('sen{}.dot'.format(c), 'w')
-            f.write(graphs[c].to_dot())
-            f.close()
-
-        sim = get_sim(graphs[0], graphs[1])
+        sim = get_sim(sens_path, deps_path, wrapper, analyzer)
         print 'similarity: {}'.format(sim)
 
 
