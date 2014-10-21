@@ -14,6 +14,14 @@ __USAGE__ = 'usage:\n' + \
     "machine_sim.py sen_file dep_file cfg_file (two sentences)" + \
     'machine_sim.py sen_dir dep_dir cfg_file (batch evaluation)'
 
+def print_now(s, newline=True):
+    if newline:
+        print s
+    else:
+        print s,
+
+    sys.stdout.flush()
+
 def get_deps(stream):
     sen1, sen2 = [], []
     while True:
@@ -34,7 +42,9 @@ def graph_sim(graph1, graph2):
     logging.debug('all edges: {}'.format(all_edges))
     shared_edges = graph1.edges.intersection(graph2.edges)
     logging.debug('shared edges: {}'.format(shared_edges))
-    return len(shared_edges) / float(len(all_edges))
+    info_str = "graph1_edges: {}, graph2_edges: {}, shared: {}".format(
+        len(graph1.edges), len(graph2.edges), len(shared_edges))
+    return len(shared_edges) / float(len(all_edges)), info_str
 
 def get_graph(deps, wrapper, tok2lemma):
     wrapper.reset_lexicon()
@@ -47,28 +57,36 @@ def get_graph(deps, wrapper, tok2lemma):
     return MachineGraph.create_from_machines(
         active_machines, max_depth=2, whitelist=wrapper.wordlist)
 
-def get_sim(sen_file, dep_file, wrapper, analyzer):
-        sen1_toks, sen2_toks = map(word_tokenize, open(sen_file).readlines())
+def get_sim(sen_file, dep_file, wrapper, analyzer, to_dot=False):
+        sen1_toks, sen2_toks = map(
+            word_tokenize,
+            (line.decode('utf-8') for line in open(sen_file).readlines()))
         sen1_ana, sen2_ana = analyzer.analyze([sen1_toks, sen2_toks])
         tok2lemma = {"ROOT": "ROOT"}
         for tok, ana in sen1_ana + sen2_ana:
             tok2lemma[tok] = ana.split('||')[0].split('<')[0]
 
         sen1_deps, sen2_deps = get_deps(file(dep_file))
+        if not sen1_deps:
+            return None, None
+        elif not sen2_deps:
+            return None, None
 
         graphs = (get_graph(sen1_deps, wrapper, tok2lemma),
                   get_graph(sen2_deps, wrapper, tok2lemma))
-        for c, graph in enumerate(graphs):
-            f = open('sen{}.dot'.format(c), 'w')
-            f.write(graphs[c].to_dot())
-            f.close()
+
+        if to_dot:
+            for c, graph in enumerate(graphs):
+                f = open('sen{}.dot'.format(c), 'w')
+                f.write(graphs[c].to_dot())
+                f.close()
 
         return graph_sim(graphs[0], graphs[1])
 
 def main(sens_path, deps_path, cfg_file):
 
     hunmorph_dir = os.environ['HUNMORPH_DIR']
-    print 'loading analyzer...',
+    print_now('loading analyzer...')
     analyzer = MorphAnalyzer(
         Ocamorph(
             os.path.join(hunmorph_dir, "ocamorph"),
@@ -76,30 +94,36 @@ def main(sens_path, deps_path, cfg_file):
         Hundisambig(
             os.path.join(hunmorph_dir, "hundisambig"),
             os.path.join(hunmorph_dir, "en_wsj.model")))
-    
-    print 'done\nloading wrapper...',
+
+    print_now('loading wrapper...')
     wrapper = Wrapper(cfg_file)
-    print 'done'
+    print_now('reading sentence pairs...')
 
     if os.path.isdir(sens_path):
         assert os.path.isdir(deps_path), __USAGE__
         gold_path = os.path.join(os.environ['SEMEVAL_DATA'], 'sts_trial')
         assert os.path.isdir(gold_path), "{} does not exist".format(gold_path)
         for sen_fn in os.listdir(sens_path):
-            print 'processing {}...'.format(sen_fn)
             sen_path = os.path.join(sens_path, sen_fn)
             dep_path = os.path.join(deps_path, sen_fn.replace('.sen', '.dep'))
-            sim = get_sim(sen_path, dep_path, wrapper, analyzer)
+            if not os.path.exists(dep_path):
+                continue
+            print_now('processing {}...'.format(sen_fn), newline=False)
+            sim, info = get_sim(sen_path, dep_path, wrapper, analyzer)
+            if sim is None:  # caused by empty dep files (parsing errors)
+                continue
             gold_path = os.path.join(
                 deps_path.replace('dep', 'gold'),
                 sen_fn.replace('.sen', '.gold'))
             gold_sim = float(file(gold_path).read().strip())
-            print 'sim: {}, gold: {}'.format(sim, gold_sim)
+            print_now('sim: {}, gold: {}, {}'.format(
+                sim, gold_sim, info))
 
     else:
         assert not os.path.isdir(deps_path), __USAGE__
-        sim = get_sim(sens_path, deps_path, wrapper, analyzer)
-        print 'similarity: {}'.format(sim)
+        sim, info = get_sim(sens_path, deps_path, wrapper, analyzer,
+                            to_dot=True)
+        print_now('similarity: {}, info: {}'.format(sim, info))
 
 
 if __name__ == '__main__':
