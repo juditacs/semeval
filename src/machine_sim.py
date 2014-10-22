@@ -12,7 +12,7 @@ from pymachine.src.wrapper import Wrapper
 
 __USAGE__ = 'usage:\n' + \
     "machine_sim.py sen_file dep_file cfg_file (two sentences)" + \
-    'machine_sim.py sen_dir dep_dir cfg_file (batch evaluation)'
+    'machine_sim.py sen_dir dep_dir out_dir cfg_file (batch evaluation)'
 
 def print_now(s, newline=True):
     if newline:
@@ -50,12 +50,18 @@ def get_graph(deps, wrapper, tok2lemma):
     wrapper.reset_lexicon()
     for binary in wrapper.lexicon.active_machines():
         wrapper.wordlist.add(binary.printname())
+    for lemma in tok2lemma.itervalues():
+        wrapper.wordlist.add(lemma)
     for dep in deps:
         wrapper.add_dependency(dep, tok2lemma)
     active_machines = wrapper.lexicon.active_machines()
     logging.debug('active machines: {}'.format(active_machines))
+
+    wordlist_machines = map(wrapper.lexicon.get_machine, wrapper.wordlist)
     return MachineGraph.create_from_machines(
-        active_machines, max_depth=2, whitelist=wrapper.wordlist)
+        wordlist_machines, whitelist=wrapper.wordlist)
+    #return MachineGraph.create_from_machines(
+    #    active_machines, max_depth=2, whitelist=wrapper.wordlist)
 
 def get_sim(sen_file, dep_file, wrapper, analyzer, to_dot=False):
         sen1_toks, sen2_toks = map(
@@ -83,11 +89,9 @@ def get_sim(sen_file, dep_file, wrapper, analyzer, to_dot=False):
 
         return graph_sim(graphs[0], graphs[1])
 
-def main(sens_path, deps_path, cfg_file):
-
+def get_analyzer():
     hunmorph_dir = os.environ['HUNMORPH_DIR']
-    print_now('loading analyzer...')
-    analyzer = MorphAnalyzer(
+    return MorphAnalyzer(
         Ocamorph(
             os.path.join(hunmorph_dir, "ocamorph"),
             os.path.join(hunmorph_dir, "morphdb_en.bin")),
@@ -95,35 +99,42 @@ def main(sens_path, deps_path, cfg_file):
             os.path.join(hunmorph_dir, "hundisambig"),
             os.path.join(hunmorph_dir, "en_wsj.model")))
 
+def main_batch(sens_path, deps_path, outs_path, cfg_file):
+    print_now('loading analyzer...')
+    analyzer = get_analyzer()
     print_now('loading wrapper...')
     wrapper = Wrapper(cfg_file)
     print_now('reading sentence pairs...')
 
-    if os.path.isdir(sens_path):
-        assert os.path.isdir(deps_path), __USAGE__
-        gold_path = os.path.join(os.environ['SEMEVAL_DATA'], 'sts_trial')
-        assert os.path.isdir(gold_path), "{} does not exist".format(gold_path)
-        for sen_fn in os.listdir(sens_path):
-            sen_path = os.path.join(sens_path, sen_fn)
-            dep_path = os.path.join(deps_path, sen_fn.replace('.sen', '.dep'))
-            if not os.path.exists(dep_path):
-                continue
-            print_now('processing {}...'.format(sen_fn), newline=False)
-            sim, info = get_sim(sen_path, dep_path, wrapper, analyzer)
-            if sim is None:  # caused by empty dep files (parsing errors)
-                continue
-            gold_path = os.path.join(
-                deps_path.replace('dep', 'gold'),
-                sen_fn.replace('.sen', '.gold'))
-            gold_sim = float(file(gold_path).read().strip())
-            print_now('sim: {}, gold: {}, {}'.format(
-                sim, gold_sim, info))
+    assert os.path.isdir(sens_path) and os.path.isdir(deps_path), __USAGE__
+    gold_path = os.path.join(os.environ['SEMEVAL_DATA'], 'sts_trial')
+    assert os.path.isdir(gold_path), "{} does not exist".format(gold_path)
+    for sen_fn in os.listdir(sens_path):
+        sen_path = os.path.join(sens_path, sen_fn)
+        dep_path = os.path.join(deps_path, sen_fn.replace('.sen', '.dep'))
+        if not os.path.exists(dep_path):
+            continue
+        print_now('processing {}...'.format(sen_fn))
+        sim, info = get_sim(sen_path, dep_path, wrapper, analyzer)
+        if sim is None:  # caused by empty dep files (parsing errors)
+            continue
+        gold_path = os.path.join(
+            deps_path.replace('dep', 'gold'),
+            sen_fn.replace('.sen', '.gold'))
+        out_path = os.path.join(outs_path, sen_fn.replace('.sen', '.out'))
+        gold_sim = float(file(gold_path).read().strip())
+        open(out_path, 'w').write('sim: {}, gold: {}, {}\n'.format(
+            sim, gold_sim, info))
 
-    else:
-        assert not os.path.isdir(deps_path), __USAGE__
-        sim, info = get_sim(sens_path, deps_path, wrapper, analyzer,
-                            to_dot=True)
-        print_now('similarity: {}, info: {}'.format(sim, info))
+def main_single(sens_path, deps_path, cfg_file):
+    print_now('loading analyzer...')
+    analyzer = get_analyzer()
+    print_now('loading wrapper...')
+    wrapper = Wrapper(cfg_file)
+    print_now('reading sentence pairs...')
+    assert not os.path.isdir(deps_path), __USAGE__
+    sim, info = get_sim(sens_path, deps_path, wrapper, analyzer, to_dot=True)
+    print_now('similarity: {}, info: {}'.format(sim, info))
 
 
 if __name__ == '__main__':
@@ -132,6 +143,11 @@ if __name__ == '__main__':
         format="%(asctime)s : " +
         "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
 
-    assert len(sys.argv) == 4, __USAGE__
-    sens_path, deps_path, cfg_file = sys.argv[1:4]
-    main(sens_path, deps_path, cfg_file)
+    if len(sys.argv) == 4:
+        sens_path, deps_path, cfg_file = sys.argv[1:4]
+        main_single(sens_path, deps_path, cfg_file)
+    elif len(sys.argv) == 5:
+        sens_path, deps_path, out_path, cfg_file = sys.argv[1:5]
+        main_batch(sens_path, deps_path, out_path, cfg_file)
+    else:
+        raise Exception(__USAGE__)
