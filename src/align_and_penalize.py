@@ -1,9 +1,11 @@
-from sys import stdin
+from collections import defaultdict
 import math
 import re
-from nltk.corpus import wordnet
-from collections import defaultdict
+from sys import stdin
 
+from nltk.corpus import wordnet
+from nltk.tag.hunpos import HunposTagger
+from nltk.tokenize import word_tokenize
 
 sense_cache = {}
 num_re = re.compile(r'^[0-9.,]+$', re.UNICODE)
@@ -15,28 +17,29 @@ pronouns = {
     'they': 'them', 'them': 'they',
 }
 
+hunpos_tagger = HunposTagger('en_wsj.model')
 
 class AlignAndPenalize(object):
 
-    def __init__(self, sen1, sen2, tags1=None, tags2=None, map_tags=None):
+    def __init__(self, sen1, sen2, tags1, tags2, map_tags):
         self.sen1 = []
         self.sen2 = []
-        if map_tags:
-            self.map_tags = map_tags
-        else:
-            self.map_tags = self.default_map_tags
+        self.map_tags = map_tags
         for i, tok1 in enumerate(sen1):
             self.sen1.append({})
             self.sen1[-1]['token'] = tok1
-            if tags1:
-                self.map_tags(tags1[i], self.sen1[-1])
+            self.map_tags(tags1[i], self.sen1[-1])
         for i, tok2 in enumerate(sen2):
             self.sen2.append({})
             self.sen2[-1]['token'] = tok2
-            if tags2:
-                self.map_tags(tags2[i], self.sen2[-1])
+            self.map_tags(tags2[i], self.sen2[-1])
 
-    def default_map_tags(self, tags, token_d):
+    @staticmethod
+    def sts_map_tags(pos_tag, token_d):
+        token_d['pos'] = pos_tag
+
+    @staticmethod
+    def twitter_map_tags(tags, token_d):
         sp = tags.split('/')[1:]
         token_d['ner'] = sp[0]
         token_d['pos'] = sp[1]
@@ -260,20 +263,32 @@ def jaccard(s1, s2):
         return 0.0
 
 
-def read_line(line):
-    fd = line.decode('utf8').strip().split('\t')
+def parse_twitter_line(fd):
     sen1 = fd[2].split(' ')
     sen2 = fd[3].split(' ')
     tags1 = fd[5].split(' ')
     tags2 = fd[6].split(' ')
     return sen1, sen2, tags1, tags2
 
+def parse_sts_line(fields):
+    sen1_toks, sen2_toks = map(word_tokenize, fields)
+    sen1_pos, sen2_pos = map(hunpos_tagger.tag, (sen1_toks, sen2_toks))
+    return sen1_toks, sen2_toks, sen1_pos, sen2_pos
 
 def main():
     read_freqs()
     for l in stdin:
-        sen1, sen2, tags1, tags2 = read_line(l)
-        aligner = AlignAndPenalize(sen1, sen2, tags1, tags2)
+        fields = l.decode('utf8').strip().split('\t')
+        if len(fields) == 7:
+            parser = parse_twitter_line
+            map_tags = AlignAndPenalize.twitter_map_tags
+        elif len(fields) == 2:
+            parser = parse_sts_line(fields)
+            map_tags = AlignAndPenalize.sts_map_tags
+        else:
+            raise Exception('unknown input format: {0}'.format(fields))
+        sen1, sen2, tags1, tags2 = parser(fields)
+        aligner = AlignAndPenalize(sen1, sen2, tags1, tags2, map_tags)
         aligner.get_senses()
         aligner.get_most_similar_tokens()
         print aligner.sentence_similarity()
