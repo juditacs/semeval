@@ -52,7 +52,7 @@ class AlignAndPenalize(object):
             if len(wn_sen) >= 10:
                 n = float(len(wn_sen))
                 for s in wn_sen:
-                    w = s.name().split('.')[0]
+                    w = s.name.split('.')[0]
                     s_sen = wordnet.synsets(w)
                     if len(s_sen) / n <= 1.0 / 3:
                         senses.add(w)
