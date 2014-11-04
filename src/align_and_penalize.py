@@ -158,7 +158,8 @@ class AlignAndPenalize(object):
         bigrams2 = set(get_ngrams(y, 2).iterkeys())
         if not bigrams1 and not bigrams2:
             return 0
-        return float(len(bigrams1 & bigrams2)) / (len(bigrams1) + len(bigrams2))
+        return float(len(bigrams1 & bigrams2)) / (len(bigrams1) +
+                                                  len(bigrams2))
 
     def numerical(self, token):
         m = num_re.match(token)
@@ -172,7 +173,8 @@ class AlignAndPenalize(object):
             s1 += tok1['most_sim_score']
         for tok2 in self.sen2:
             s2 += tok2['most_sim_score']
-        self.T = float(s1) / (2 * len(self.sen1)) + float(s2) / (2 * len(self.sen2))
+        self.T = float(s1) / (2 * len(self.sen1)) + float(s2) / (2 * len(
+                                                                 self.sen2))
         self.penalty()
         return self.T - self.P
 
@@ -196,9 +198,11 @@ class AlignAndPenalize(object):
         A1 = [t for t in self.sen1 if t['most_sim_score'] < 0.05]
         A2 = [t for t in self.sen2 if t['most_sim_score'] < 0.05]
         B1 = set([(t['token'], t['most_sim_word'], t['most_sim_score'])
-                 for t in self.sen1 if self.is_antonym(t['token'], t['most_sim_word'])])
+                 for t in self.sen1 if self.is_antonym(t['token'],
+                                                       t['most_sim_word'])])
         B2 = set([(t['token'], t['most_sim_word'], t['most_sim_score'])
-                 for t in self.sen2 if self.is_antonym(t['token'], t['most_sim_word'])])
+                 for t in self.sen2 if self.is_antonym(t['token'],
+                                                       t['most_sim_word'])])
         P1A = 0.0
         for t in A1:
             score = t['most_sim_score']
