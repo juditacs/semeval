@@ -6,7 +6,6 @@ import sys
 
 from nltk.tokenize import word_tokenize
 
-from hunmisc.utils.huntool_wrapper import Hundisambig, Ocamorph, MorphAnalyzer
 from pymachine.src.machine import MachineGraph
 from pymachine.src.wrapper import Wrapper
 
@@ -46,40 +45,40 @@ def graph_sim(graph1, graph2):
         len(graph1.edges), len(graph2.edges), len(shared_edges))
     return len(shared_edges) / float(len(all_edges)), info_str
 
-def get_graph(deps, wrapper, tok2lemma):
+def get_graph(deps, whitelist_toks, wrapper):
+    print_now('resetting lexicon...')
     wrapper.reset_lexicon()
+    wrapper.wordlist = set()
     for binary in wrapper.lexicon.active_machines():
         wrapper.wordlist.add(binary.printname())
-    for lemma in tok2lemma.itervalues():
-        wrapper.wordlist.add(lemma)
+    print_now('adding dependencies...')
     for dep in deps:
-        wrapper.add_dependency(dep, tok2lemma)
+        wrapper.add_dependency(dep)
     active_machines = wrapper.lexicon.active_machines()
     logging.debug('active machines: {}'.format(active_machines))
 
-    wordlist_machines = map(wrapper.lexicon.get_machine, wrapper.wordlist)
+    wordlist = set([wrapper.get_lemma(tok) for tok in whitelist_toks])
+    wordlist_machines = map(wrapper.lexicon.get_machine, wordlist)
+    print_now('creating graph...')
+    print_now('whitelist: {0}'.format(wordlist))
     return MachineGraph.create_from_machines(
-        wordlist_machines, whitelist=wrapper.wordlist)
+        wordlist_machines, max_depth=0, whitelist=wordlist, strict=True)
     #return MachineGraph.create_from_machines(
-    #    active_machines, max_depth=2, whitelist=wrapper.wordlist)
+    #    wordlist_machines, max_depth=1)
 
-def get_sim(sen_file, dep_file, wrapper, analyzer, to_dot=False):
+def get_sim(sen_file, dep_file, wrapper, to_dot=False):
         sen1_toks, sen2_toks = map(
             word_tokenize,
             (line.decode('utf-8') for line in open(sen_file).readlines()))
-        sen1_ana, sen2_ana = analyzer.analyze([sen1_toks, sen2_toks])
-        tok2lemma = {"ROOT": "ROOT"}
-        for tok, ana in sen1_ana + sen2_ana:
-            tok2lemma[tok] = ana.split('||')[0].split('<')[0]
-
         sen1_deps, sen2_deps = get_deps(file(dep_file))
         if not sen1_deps:
             return None, None
         elif not sen2_deps:
             return None, None
 
-        graphs = (get_graph(sen1_deps, wrapper, tok2lemma),
-                  get_graph(sen2_deps, wrapper, tok2lemma))
+        whitelist_toks = set(sen1_toks + sen2_toks)
+        graphs = (get_graph(sen1_deps, whitelist_toks, wrapper),
+                  get_graph(sen2_deps, whitelist_toks, wrapper))
 
         if to_dot:
             for c, graph in enumerate(graphs):
@@ -89,21 +88,9 @@ def get_sim(sen_file, dep_file, wrapper, analyzer, to_dot=False):
 
         return graph_sim(graphs[0], graphs[1])
 
-def get_analyzer():
-    hunmorph_dir = os.environ['HUNMORPH_DIR']
-    return MorphAnalyzer(
-        Ocamorph(
-            os.path.join(hunmorph_dir, "ocamorph"),
-            os.path.join(hunmorph_dir, "morphdb_en.bin")),
-        Hundisambig(
-            os.path.join(hunmorph_dir, "hundisambig"),
-            os.path.join(hunmorph_dir, "en_wsj.model")))
-
 def main_batch(sens_path, deps_path, outs_path, cfg_file):
-    print_now('loading analyzer...')
-    analyzer = get_analyzer()
     print_now('loading wrapper...')
-    wrapper = Wrapper(cfg_file)
+    wrapper = Wrapper(cfg_file, include_longman=True)
     print_now('reading sentence pairs...')
 
     assert os.path.isdir(sens_path) and os.path.isdir(deps_path), __USAGE__
@@ -115,7 +102,7 @@ def main_batch(sens_path, deps_path, outs_path, cfg_file):
         if not os.path.exists(dep_path):
             continue
         print_now('processing {}...'.format(sen_fn))
-        sim, info = get_sim(sen_path, dep_path, wrapper, analyzer)
+        sim, info = get_sim(sen_path, dep_path, wrapper)
         if sim is None:  # caused by empty dep files (parsing errors)
             continue
         gold_path = os.path.join(
@@ -127,13 +114,11 @@ def main_batch(sens_path, deps_path, outs_path, cfg_file):
             sim, gold_sim, info))
 
 def main_single(sens_path, deps_path, cfg_file):
-    print_now('loading analyzer...')
-    analyzer = get_analyzer()
     print_now('loading wrapper...')
-    wrapper = Wrapper(cfg_file)
+    wrapper = Wrapper(cfg_file, include_longman=True)
     print_now('reading sentence pairs...')
     assert not os.path.isdir(deps_path), __USAGE__
-    sim, info = get_sim(sens_path, deps_path, wrapper, analyzer, to_dot=True)
+    sim, info = get_sim(sens_path, deps_path, wrapper, to_dot=True)
     print_now('similarity: {}, info: {}'.format(sim, info))
 
 
