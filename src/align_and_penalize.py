@@ -1,27 +1,35 @@
 from collections import defaultdict
+import logging
 import math
+import os
 import re
-from sys import stdin
+from sys import stderr, stdin
 
+def log(s):
+    stderr.write(s)
+    stderr.flush()
+
+log('loading wordnet...')
 from nltk.corpus import wordnet
+log('done\n')
+
 from nltk.tag.hunpos import HunposTagger
 from nltk.tokenize import word_tokenize
 
-sense_cache = {}
-num_re = re.compile(r'^[0-9.,]+$', re.UNICODE)
-pronouns = {
-    'i': 'me', 'me': 'i',
-    'he': 'him', 'him': 'he',
-    'she': 'her', 'her': 'she',
-    'we': 'us', 'us': 'we',
-    'they': 'them', 'them': 'they',
-}
+__EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/freqs.en'
 
-hunpos_tagger = HunposTagger('en_wsj.model')
 
 class AlignAndPenalize(object):
+    num_re = re.compile(r'^[0-9.,]+$', re.UNICODE)
+    pronouns = {
+        'i': 'me', 'me': 'i',
+        'he': 'him', 'him': 'he',
+        'she': 'her', 'her': 'she',
+        'we': 'us', 'us': 'we',
+        'they': 'them', 'them': 'they'}
 
-    def __init__(self, sen1, sen2, tags1, tags2, map_tags):
+    def __init__(self, sen1, sen2, tags1, tags2, map_tags, wrapper):
+        self.wrapper = wrapper
         self.sen1 = []
         self.sen2 = []
         self.map_tags = map_tags
@@ -47,8 +55,8 @@ class AlignAndPenalize(object):
 
     def get_senses(self):
         for t in self.sen1 + self.sen2:
-            if t['token'] in sense_cache:
-                t['senses'] = sense_cache[t['token']]
+            if t['token'] in self.wrapper.sense_cache:
+                t['senses'] = self.wrapper.sense_cache[t['token']]
                 continue
             senses = set([t['token']])
             wn_sen = wordnet.synsets(t['token'])
@@ -59,7 +67,7 @@ class AlignAndPenalize(object):
                     s_sen = wordnet.synsets(w)
                     if len(s_sen) / n <= 1.0 / 3:
                         senses.add(w)
-            sense_cache[t['token']] = senses
+            self.wrapper.sense_cache[t['token']] = senses
             t['senses'] = senses
 
     def get_most_similar_tokens(self):
@@ -78,12 +86,12 @@ class AlignAndPenalize(object):
 
     def sim_xy(self, x, y, x_pos, y_pos):
         max1 = 0.0
-        for sx in sense_cache[x]:
+        for sx in self.wrapper.sense_cache[x]:
             sim = self.similarity_wrapper(sx, y, x_pos, y_pos)
             if sim > max1:
                 max1 = sim
         max2 = 0.0
-        for sy in sense_cache[y]:
+        for sy in self.wrapper.sense_cache[y]:
             sim = self.similarity_wrapper(x, sy, x_pos, y_pos)
             if sim > max2:
                 max2 = sim
@@ -121,9 +129,8 @@ class AlignAndPenalize(object):
     def is_pronoun_equivalent(self, x, y):
         x_ = x.lower()
         y_ = y.lower()
-        if x_ in pronouns and y_ == pronouns[x_]:
-            return True
-        return False
+        return (x_ in AlignAndPenalize.pronouns and
+                y_ == AlignAndPenalize.pronouns[x_])
 
     def is_acronym(self, x, y, x_i, y_i):
         #TODO
@@ -165,7 +172,7 @@ class AlignAndPenalize(object):
                                                   len(bigrams2))
 
     def numerical(self, token):
-        m = num_re.match(token)
+        m = AlignAndPenalize.num_re.match(token)
         if not m:
             return False
         return token.replace(',', '.').rstrip('0')
@@ -182,8 +189,8 @@ class AlignAndPenalize(object):
         return self.T - self.P
 
     def weight_freq(self, token):
-        if token in global_freqs:
-            return global_freqs[token]
+        if token in self.wrapper.global_freqs:
+            return self.wrapper.global_freqs[token]
         return 0
 
     def weight_pos(self, token):
@@ -229,19 +236,6 @@ class AlignAndPenalize(object):
         self.P = P1A + P2A + P1B + P2B
 
 
-global_freqs = {}
-
-
-def read_freqs(ifn='/mnt/store/home/hlt/Language/English/Freq/freqs.en'):
-    global global_freqs
-    with open(ifn) as f:
-        for l in f:
-            fd = l.decode('utf8').strip().split(' ')
-            word = fd[0]
-            freq = -math.log(int(fd[1]))
-            global_freqs[word] = freq
-
-
 def bigram_dist_jaccard(tok1, tok2):
     bigrams1 = set(get_ngrams(tok1, 2).iterkeys())
     bigrams2 = set(get_ngrams(tok2, 2).iterkeys())
@@ -263,35 +257,62 @@ def jaccard(s1, s2):
         return 0.0
 
 
-def parse_twitter_line(fd):
-    sen1 = fd[2].split(' ')
-    sen2 = fd[3].split(' ')
-    tags1 = fd[5].split(' ')
-    tags2 = fd[6].split(' ')
-    return sen1, sen2, tags1, tags2
+class STSWrapper():
+    def __init__(self):
+        logging.info('reading global frequencies...')
+        self.read_freqs()
+        self.sense_cache = {}
+        hunmorph_dir = os.environ['HUNMORPH_DIR']
+        self.hunpos_tagger = HunposTagger(os.path.join(hunmorph_dir,
+                                                       'en_wsj.model'))
 
-def parse_sts_line(fields):
-    sen1_toks, sen2_toks = map(word_tokenize, fields)
-    sen1_pos, sen2_pos = map(hunpos_tagger.tag, (sen1_toks, sen2_toks))
-    return sen1_toks, sen2_toks, sen1_pos, sen2_pos
+    def parse_twitter_line(self, fd):
+        sen1 = fd[2].split(' ')
+        sen2 = fd[3].split(' ')
+        tags1 = fd[5].split(' ')
+        tags2 = fd[6].split(' ')
+        return sen1, sen2, tags1, tags2
 
-def main():
-    read_freqs()
-    for l in stdin:
-        fields = l.decode('utf8').strip().split('\t')
+    def parse_sts_line(self, fields):
+        sen1_toks, sen2_toks = map(word_tokenize, fields)
+        sen1_pos, sen2_pos = map(self.hunpos_tagger.tag,
+                                 (sen1_toks, sen2_toks))
+        return sen1_toks, sen2_toks, sen1_pos, sen2_pos
+
+    def read_freqs(self, ifn=__EN_FREQ_PATH__):
+        self.global_freqs = {}
+        with open(ifn) as f:
+            for l in f:
+                fd = l.decode('utf8').strip().split(' ')
+                word = fd[0]
+                freq = -math.log(int(fd[1]))
+                self.global_freqs[word] = freq
+
+    def process_line(self, line):
+        fields = line.decode('utf8').strip().split('\t')
         if len(fields) == 7:
-            parser = parse_twitter_line
+            parser = self.parse_twitter_line
             map_tags = AlignAndPenalize.twitter_map_tags
         elif len(fields) == 2:
-            parser = parse_sts_line(fields)
+            parser = self.parse_sts_line
             map_tags = AlignAndPenalize.sts_map_tags
         else:
             raise Exception('unknown input format: {0}'.format(fields))
         sen1, sen2, tags1, tags2 = parser(fields)
-        aligner = AlignAndPenalize(sen1, sen2, tags1, tags2, map_tags)
+        aligner = AlignAndPenalize(sen1, sen2, tags1, tags2, map_tags,
+                                   wrapper=self)
         aligner.get_senses()
         aligner.get_most_similar_tokens()
         print aligner.sentence_similarity()
+
+def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s : " +
+        "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
+
+    wrapper = STSWrapper()
+    map(wrapper.process_line, stdin)
 
 if __name__ == '__main__':
     main()
