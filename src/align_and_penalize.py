@@ -95,7 +95,7 @@ class AlignAndPenalize(object):
             if i == len(sen1) - 1:
                 continue
             candidates = [pattern.format(tok, sen1[i+1])
-                          for pattern in ("{0}{1}", "{0}-{1}")]
+                          for pattern in (u"{0}{1}", u"{0}-{1}")]
             #logging.debug('tok: {0}, cands: {1}'.format(tok, candidates))
             for cand in candidates:
                 if cand in sen2_set:
@@ -135,21 +135,21 @@ class AlignAndPenalize(object):
                 for y_i, y in enumerate(self.sen2)))
             x['most_sim_word'] = most_sim
             x['most_sim_score'] = score
-            #logging.info('{0}. {1} -> {2} ({3})'.format(
-            #    x_i, x['token'], most_sim, score))
+            logging.info('{0}. {1} -> {2} ({3})'.format(
+                x_i, x['token'], most_sim, score))
         for y_i, y in enumerate(self.sen2):
             score, most_sim = max((
                 (self.sim_xy(y['token'], x['token'], x_i, y_i), x['token'])
                 for x_i, x in enumerate(self.sen1)))
             y['most_sim_word'] = most_sim
             y['most_sim_score'] = score
-            #logging.info('{0}. {1} -> {2} ({3})'.format(
-            #    y_i, y['token'], most_sim, score))
+            logging.info('{0}. {1} -> {2} ({3})'.format(
+                y_i, y['token'], most_sim, score))
 
     def sim_xy(self, x, y, x_pos, y_pos):
         max1 = 0.0
         best_pair_1 = None
-        logging.debug('got this: {0}, {1}'.format(x, y))
+        logging.debug(u'got this: {0}, {1}'.format(x, y))
         for sx in self.sts_wrapper.sense_cache[x]:
             sim = self.similarity_wrapper(sx, y, x_pos, y_pos)
             #logging.debug("({0}, {1}): {2}".format(sx, y, sim))
@@ -375,8 +375,14 @@ class STSWrapper():
 
     def parse_sts_line(self, fields):
         sen1_toks, sen2_toks = map(word_tokenize, fields)
-        sen1_pos, sen2_pos = map(self.hunpos_tagger.tag,
-                                 (sen1_toks, sen2_toks))
+        try:
+            sen1_pos, sen2_pos = map(self.hunpos_tagger.tag,
+                                     (sen1_toks, sen2_toks))
+        except UnicodeEncodeError:
+            logging.warning('failed to run POS-tagging: {0}'.format(
+                (sen1_toks, sen2_toks)))
+            sen1_pos = ["UNKNOWN" for tok in sen1_toks]
+            sen2_pos = ["UNKNOWN" for tok in sen2_toks]
         return sen1_toks, sen2_toks, sen1_pos, sen2_pos
 
     def read_freqs(self, ifn=__EN_FREQ_PATH__):
