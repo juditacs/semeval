@@ -18,6 +18,8 @@ from nltk.corpus import stopwords as nltk_stopwords
 from nltk.tag.hunpos import HunposTagger
 from nltk.tokenize import word_tokenize
 
+from pymachine.src.wrapper import Wrapper as MachineWrapper
+
 __EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/freqs.en'
 
 
@@ -34,12 +36,15 @@ class AlignAndPenalize(object):
         'they': 'them', 'them': 'they'}
 
     def __init__(self, sen1, sen2, tags1, tags2, map_tags, wrapper,
-                 sim_function='lsa_sim'):
+                 sim_function):
         logging.debug('AlignAndPenalize init:')
         logging.debug('sen1: {0}'.format(sen1))
         logging.debug('sen2: {0}'.format(sen2))
         self.sts_wrapper = wrapper
-        self.sim_function = getattr(self, sim_function)
+        if isinstance(sim_function, str):
+            self.sim_function = getattr(self, sim_function)
+        else:
+            self.sim_function = sim_function
         self.sen1 = []
         self.sen2 = []
         self.map_tags = map_tags
@@ -116,7 +121,7 @@ class AlignAndPenalize(object):
             if len(wn_sen) >= 10:
                 n = float(len(wn_sen))
                 for s in wn_sen:
-                    w = s.name.split('.')[0]
+                    w = s.name().split('.')[0]
                     s_sen = wordnet.synsets(w)
                     if len(s_sen) / n <= 1.0 / 3:
                         senses.add(w)
@@ -130,16 +135,16 @@ class AlignAndPenalize(object):
                 for y_i, y in enumerate(self.sen2)))
             x['most_sim_word'] = most_sim
             x['most_sim_score'] = score
-            logging.debug('{0}. {1} -> {2} ({3})'.format(x_i, x['token'],
-                                                         most_sim, score))
+            #logging.info('{0}. {1} -> {2} ({3})'.format(
+            #    x_i, x['token'], most_sim, score))
         for y_i, y in enumerate(self.sen2):
             score, most_sim = max((
                 (self.sim_xy(y['token'], x['token'], x_i, y_i), x['token'])
                 for x_i, x in enumerate(self.sen1)))
             y['most_sim_word'] = most_sim
             y['most_sim_score'] = score
-            logging.debug('{0}. {1} -> {2} ({3})'.format(y_i, y['token'],
-                                                         most_sim, score))
+            #logging.info('{0}. {1} -> {2} ({3})'.format(
+            #    y_i, y['token'], most_sim, score))
 
     def sim_xy(self, x, y, x_pos, y_pos):
         max1 = 0.0
@@ -344,16 +349,22 @@ def jaccard(s1, s2):
 
 
 class STSWrapper():
-    def __init__(self):
+    def __init__(self, sim_function='lsa_sim'):
         logging.info('reading global frequencies...')
+        self.sim_function = sim_function
         self.read_freqs()
         self.sense_cache = {}
         self.frequent_adverbs_cache = {}
         self.punctuation = set(string.punctuation)
-        hunmorph_dir = os.environ['HUNMORPH_DIR']
-        self.hunpos_tagger = HunposTagger(os.path.join(hunmorph_dir,
-                                                       'en_wsj.model'))
+        self.hunpos_tagger = STSWrapper.get_hunpos_tagger()
         self.stopwords = nltk_stopwords.words('english')
+
+    @staticmethod
+    def get_hunpos_tagger():
+        hunmorph_dir = os.environ['HUNMORPH_DIR']
+        hunpos_binary = os.path.join(hunmorph_dir, 'hunpos-tag')
+        hunpos_model = os.path.join(hunmorph_dir, 'en_wsj.model')
+        return HunposTagger(hunpos_model, hunpos_binary)
 
     def parse_twitter_line(self, fd):
         sen1 = fd[2].split(' ')
@@ -394,19 +405,29 @@ class STSWrapper():
             raise Exception('unknown input format: {0}'.format(fields))
         sen1, sen2, tags1, tags2 = parser(fields)
         aligner = AlignAndPenalize(sen1, sen2, tags1, tags2, map_tags,
-                                   wrapper=self)
+                                   wrapper=self,
+                                   sim_function=self.sim_function)
         aligner.get_senses()
         aligner.get_most_similar_tokens()
         print aligner.sentence_similarity()
 
 def main():
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format="%(asctime)s : " +
         "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
 
-    wrapper = STSWrapper()
-    map(wrapper.process_line, stdin)
+    machine_wrapper = MachineWrapper(
+        os.path.join(os.environ['MACHINEPATH'],
+                     'pymachine/tst/definitions_test.cfg'),
+        include_longman=True)
+
+    sts_wrapper = STSWrapper(sim_function=machine_wrapper.word_similarity)
+    #sts_wrapper = STSWrapper()
+    for c, line in enumerate(stdin):
+        sts_wrapper.process_line(line)
+        if c % 10 == 0:
+            logging.info('{0}...'.format(c))
 
 if __name__ == '__main__':
     main()
