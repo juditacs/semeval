@@ -285,7 +285,12 @@ class AlignAndPenalize(object):
         return 0.5 + 0.5*int(pos in AlignAndPenalize.preferred_pos)
 
     def is_antonym(self, w1, w2):
-        #TODO
+        if w1 in self.sts_wrapper.antonym_cache(w2):
+            logging.info('Antonym found: {0} -- {1}'.format(w1, w2))
+            return True
+        if w2 in self.sts_wrapper.antonym_cache(w1):
+            logging.info('Antonym found: {0} -- {1}'.format(w2, w1))
+            return True
         return False
 
     def penalty(self):
@@ -358,6 +363,16 @@ class STSWrapper():
         self.punctuation = set(string.punctuation)
         self.hunpos_tagger = STSWrapper.get_hunpos_tagger()
         self.stopwords = nltk_stopwords.words('english')
+        self._antonym_cache = {}
+
+    def antonym_cache(self, key):
+        if not key in self._antonym_cache:
+            self._antonym_cache[key] = set()
+            for synset in wordnet.synsets(key):
+                for lemma in synset.lemmas():
+                    for antonym in lemma.antonyms():
+                        self._antonym_cache[key].add(antonym.name().split('.')[0])
+        return self._antonym_cache[key]
 
     @staticmethod
     def get_hunpos_tagger():
