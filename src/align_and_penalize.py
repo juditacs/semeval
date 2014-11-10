@@ -363,7 +363,8 @@ def jaccard(s1, s2):
 class LSAWrapper(object):
 
     def __init__(self, vector_fn='vectors_example.bin'):
-        self.lsa_model = Word2Vec.load_word2vec_format(os.path.join(os.environ['LSA_DIR'], vector_fn), binary=True)
+        self.lsa_model = Word2Vec.load_word2vec_format(
+            os.path.join(os.environ['LSA_DIR'], vector_fn), binary=True)
 
     def is_oov(self, word):
         try:
@@ -376,7 +377,8 @@ class LSAWrapper(object):
         if self.is_oov(word1) or self.is_oov(word2):
             return None
         sim = self.lsa_model.similarity(word1, word2)
-        #logging.debug(u'LSA sim: {0} -- {1} -- {2}'.format(word1, word2, sim).encode('utf8'))
+        #logging.debug(u'LSA sim: {0} -- {1} -- {2}'.format(
+        #    word1, word2, sim).encode('utf8'))
         return sim
 
 
