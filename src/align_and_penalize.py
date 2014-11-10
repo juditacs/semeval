@@ -6,6 +6,8 @@ import re
 import string
 from sys import stderr, stdin
 
+from gensim.models import Word2Vec
+
 
 def log(s):
     stderr.write(s)
@@ -14,6 +16,7 @@ def log(s):
 log('loading wordnet...')
 from nltk.corpus import wordnet
 log('done\n')
+logging.getLogger().setLevel(logging.DEBUG)
 
 from nltk.corpus import stopwords as nltk_stopwords
 from nltk.tag.hunpos import HunposTagger
@@ -354,7 +357,27 @@ def jaccard(s1, s2):
         return 0.0
 
 
-class STSWrapper():
+class LSAWrapper(object):
+
+    def __init__(self, vector_fn='vectors_example.bin'):
+        self.lsa_model = Word2Vec.load_word2vec_format(os.path.join(os.environ['LSA_DIR'], vector_fn), binary=True)
+
+    def is_oov(self, word):
+        try:
+            self.lsa_model[word]
+            return False
+        except KeyError:
+            return True
+
+    def word_similarity(self, word1, word2, pos1, pos2):
+        if self.is_oov(word1) or self.is_oov(word2):
+            return None
+        sim = self.lsa_model.similarity(word1, word2)
+        #logging.debug(u'LSA sim: {0} -- {1} -- {2}'.format(word1, word2, sim).encode('utf8'))
+        return sim
+
+
+class STSWrapper(object):
 
     def __init__(self, sim_function='lsa_sim'):
         logging.info('reading global frequencies...')
@@ -446,7 +469,9 @@ def main():
                      'pymachine/tst/definitions_test.cfg'),
         include_longman=True)
 
-    sts_wrapper = STSWrapper(sim_function=machine_wrapper.word_similarity)
+    lsa_wrapper = LSAWrapper()
+    sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity)
+    #sts_wrapper = STSWrapper(sim_function=machine_wrapper.word_similarity)
     #sts_wrapper = STSWrapper()
     for c, line in enumerate(stdin):
         sts_wrapper.process_line(line)
@@ -454,4 +479,5 @@ def main():
             logging.info('{0}...'.format(c))
 
 if __name__ == '__main__':
-    main()
+    import cProfile
+    cProfile.run('main()', 'stats_new.cprofile')
