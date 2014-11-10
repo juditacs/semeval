@@ -136,7 +136,7 @@ class AlignAndPenalize(object):
                 for y_i, y in enumerate(self.sen2)))
             x['most_sim_word'] = most_sim
             x['most_sim_score'] = score
-            logging.info('{0}. {1} -> {2} ({3})'.format(
+            logging.info(u'{0}. {1} -> {2} ({3})'.format(
                 x_i, x['token'], most_sim, score))
         for y_i, y in enumerate(self.sen2):
             score, most_sim = max((
@@ -144,7 +144,7 @@ class AlignAndPenalize(object):
                 for x_i, x in enumerate(self.sen1)))
             y['most_sim_word'] = most_sim
             y['most_sim_score'] = score
-            logging.info('{0}. {1} -> {2} ({3})'.format(
+            logging.info(u'{0}. {1} -> {2} ({3})'.format(
                 y_i, y['token'], most_sim, score))
 
     def sim_xy(self, x, y, x_pos, y_pos):
@@ -275,6 +275,7 @@ class AlignAndPenalize(object):
             raise Exception(
                 'alignment score > 1: {0} {1}'.format(self.sen1, self.sen2))
         self.penalty()
+        logging.info('T={0}, P={1}'.format(self.T, self.P))
         return self.T - self.P
 
     def weight_freq(self, token):
@@ -325,6 +326,8 @@ class AlignAndPenalize(object):
         for t, gt, score in B2:
             P2B += score + 0.5
         self.P = P1A + P2A + P1B + P2B
+        logging.info('P1A: {0} P2A: {1} P1B: {2} P2B: {3}'.format(
+            P1A, P2A, P1B, P2B))
         if self.P < 0:
             raise Exception(
                 'negative penalty: {0}\n'.format(self.P) +
@@ -356,6 +359,9 @@ def jaccard(s1, s2):
 
 class STSWrapper():
 
+    custom_stopwords = set([])
+    #custom_stopwords = set(["'s"])
+
     def __init__(self, sim_function='lsa_sim'):
         logging.info('reading global frequencies...')
         self.sim_function = sim_function
@@ -364,7 +370,7 @@ class STSWrapper():
         self.frequent_adverbs_cache = {}
         self.punctuation = set(string.punctuation)
         self.hunpos_tagger = STSWrapper.get_hunpos_tagger()
-        self.stopwords = nltk_stopwords.words('english')
+        self.stopwords = STSWrapper.get_stopwords()
         self._antonym_cache = {}
 
     def antonym_cache(self, key):
@@ -373,7 +379,8 @@ class STSWrapper():
             for synset in wordnet.synsets(key):
                 for lemma in synset.lemmas():
                     for antonym in lemma.antonyms():
-                        self._antonym_cache[key].add(antonym.name().split('.')[0])
+                        self._antonym_cache[key].add(
+                            antonym.name().split('.')[0])
         return self._antonym_cache[key]
 
     @staticmethod
@@ -382,6 +389,11 @@ class STSWrapper():
         hunpos_binary = os.path.join(hunmorph_dir, 'hunpos-tag')
         hunpos_model = os.path.join(hunmorph_dir, 'en_wsj.model')
         return HunposTagger(hunpos_model, hunpos_binary)
+
+    @staticmethod
+    def get_stopwords():
+        nltk_sw = set(nltk_stopwords.words('english'))
+        return nltk_sw.union(STSWrapper.custom_stopwords)
 
     def parse_twitter_line(self, fd):
         sen1 = fd[2].split(' ')
