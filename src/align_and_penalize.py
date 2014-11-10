@@ -230,7 +230,7 @@ class AlignAndPenalize(object):
             two_word = x + '-' + self.sen1[x_i + 1]['token']
             if two_word == y:
                 return True
-        elif x_i != 0:
+        if x_i != 0:
             two_word = self.sen1[x_i - 1]['token'] + '-' + x
             if two_word == y:
                 return True
@@ -238,7 +238,7 @@ class AlignAndPenalize(object):
             two_word = y + '-' + self.sen2[y_i + 1]['token']
             if two_word == x:
                 return True
-        elif y_i != 0:
+        if y_i != 0:
             two_word = self.sen2[y_i - 1]['token'] + '-' + y
             if two_word == x:
                 return True
