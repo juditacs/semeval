@@ -6,6 +6,7 @@ import re
 import string
 from sys import stderr, stdin
 
+
 def log(s):
     stderr.write(s)
     stderr.flush()
@@ -94,13 +95,13 @@ class AlignAndPenalize(object):
         for i, tok in enumerate(sen1):
             if i == len(sen1) - 1:
                 continue
-            candidates = [pattern.format(tok, sen1[i+1])
+            candidates = [pattern.format(tok, sen1[i + 1])
                           for pattern in (u"{0}{1}", u"{0}-{1}")]
             #logging.debug('tok: {0}, cands: {1}'.format(tok, candidates))
             for cand in candidates:
                 if cand in sen2_set:
                     tgt_tok = (sen2.index(cand), cand)
-                    for src_tok in (i, tok), (i+1, sen1[i+1]):
+                    for src_tok in (i, tok), (i + 1, sen1[i + 1]):
                         yield (src_tok, tgt_tok)
                         yield (tgt_tok, src_tok)
 
@@ -282,7 +283,7 @@ class AlignAndPenalize(object):
         return 1 / math.log(2)
 
     def weight_pos(self, pos):
-        return 0.5 + 0.5*int(pos in AlignAndPenalize.preferred_pos)
+        return 0.5 + 0.5 * int(pos in AlignAndPenalize.preferred_pos)
 
     def is_antonym(self, w1, w2):
         if w1 in self.sts_wrapper.antonym_cache(w2):
@@ -354,6 +355,7 @@ def jaccard(s1, s2):
 
 
 class STSWrapper():
+
     def __init__(self, sim_function='lsa_sim'):
         logging.info('reading global frequencies...')
         self.sim_function = sim_function
@@ -431,6 +433,7 @@ class STSWrapper():
         aligner.get_senses()
         aligner.get_most_similar_tokens()
         print aligner.sentence_similarity()
+
 
 def main():
     logging.basicConfig(
