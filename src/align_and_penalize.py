@@ -136,16 +136,16 @@ class AlignAndPenalize(object):
                 for y_i, y in enumerate(self.sen2)))
             x['most_sim_word'] = most_sim
             x['most_sim_score'] = score
-            logging.info('{0}. {1} -> {2} ({3})'.format(
-                x_i, x['token'], most_sim, score))
+            #logging.info(u'{0}. {1} -> {2} ({3})'.format(
+            #    x_i, x['token'], most_sim, score))
         for y_i, y in enumerate(self.sen2):
             score, most_sim = max((
                 (self.sim_xy(y['token'], x['token'], x_i, y_i), x['token'])
                 for x_i, x in enumerate(self.sen1)))
             y['most_sim_word'] = most_sim
             y['most_sim_score'] = score
-            logging.info('{0}. {1} -> {2} ({3})'.format(
-                y_i, y['token'], most_sim, score))
+            #logging.info(u'{0}. {1} -> {2} ({3})'.format(
+            #    y_i, y['token'], most_sim, score))
 
     def sim_xy(self, x, y, x_pos, y_pos):
         max1 = 0.0
@@ -373,7 +373,8 @@ class STSWrapper():
             for synset in wordnet.synsets(key):
                 for lemma in synset.lemmas():
                     for antonym in lemma.antonyms():
-                        self._antonym_cache[key].add(antonym.name().split('.')[0])
+                        self._antonym_cache[key].add(
+                            antonym.name().split('.')[0])
         return self._antonym_cache[key]
 
     @staticmethod
