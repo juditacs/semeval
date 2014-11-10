@@ -6,6 +6,7 @@ import re
 import string
 from sys import stderr, stdin
 
+
 def log(s):
     stderr.write(s)
     stderr.flush()
@@ -94,13 +95,13 @@ class AlignAndPenalize(object):
         for i, tok in enumerate(sen1):
             if i == len(sen1) - 1:
                 continue
-            candidates = [pattern.format(tok, sen1[i+1])
+            candidates = [pattern.format(tok, sen1[i + 1])
                           for pattern in (u"{0}{1}", u"{0}-{1}")]
             #logging.debug('tok: {0}, cands: {1}'.format(tok, candidates))
             for cand in candidates:
                 if cand in sen2_set:
                     tgt_tok = (sen2.index(cand), cand)
-                    for src_tok in (i, tok), (i+1, sen1[i+1]):
+                    for src_tok in (i, tok), (i + 1, sen1[i + 1]):
                         yield (src_tok, tgt_tok)
                         yield (tgt_tok, src_tok)
 
@@ -230,7 +231,7 @@ class AlignAndPenalize(object):
             two_word = x + '-' + self.sen1[x_i + 1]['token']
             if two_word == y:
                 return True
-        elif x_i != 0:
+        if x_i != 0:
             two_word = self.sen1[x_i - 1]['token'] + '-' + x
             if two_word == y:
                 return True
@@ -238,7 +239,7 @@ class AlignAndPenalize(object):
             two_word = y + '-' + self.sen2[y_i + 1]['token']
             if two_word == x:
                 return True
-        elif y_i != 0:
+        if y_i != 0:
             two_word = self.sen2[y_i - 1]['token'] + '-' + y
             if two_word == x:
                 return True
@@ -282,10 +283,15 @@ class AlignAndPenalize(object):
         return 1 / math.log(2)
 
     def weight_pos(self, pos):
-        return 0.5 + 0.5*int(pos in AlignAndPenalize.preferred_pos)
+        return 0.5 + 0.5 * int(pos in AlignAndPenalize.preferred_pos)
 
     def is_antonym(self, w1, w2):
-        #TODO
+        if w1 in self.sts_wrapper.antonym_cache(w2):
+            logging.info('Antonym found: {0} -- {1}'.format(w1, w2))
+            return True
+        if w2 in self.sts_wrapper.antonym_cache(w1):
+            logging.info('Antonym found: {0} -- {1}'.format(w2, w1))
+            return True
         return False
 
     def penalty(self):
@@ -349,6 +355,7 @@ def jaccard(s1, s2):
 
 
 class STSWrapper():
+
     def __init__(self, sim_function='lsa_sim'):
         logging.info('reading global frequencies...')
         self.sim_function = sim_function
@@ -358,6 +365,16 @@ class STSWrapper():
         self.punctuation = set(string.punctuation)
         self.hunpos_tagger = STSWrapper.get_hunpos_tagger()
         self.stopwords = nltk_stopwords.words('english')
+        self._antonym_cache = {}
+
+    def antonym_cache(self, key):
+        if not key in self._antonym_cache:
+            self._antonym_cache[key] = set()
+            for synset in wordnet.synsets(key):
+                for lemma in synset.lemmas():
+                    for antonym in lemma.antonyms():
+                        self._antonym_cache[key].add(antonym.name().split('.')[0])
+        return self._antonym_cache[key]
 
     @staticmethod
     def get_hunpos_tagger():
@@ -416,6 +433,7 @@ class STSWrapper():
         aligner.get_senses()
         aligner.get_most_similar_tokens()
         print aligner.sentence_similarity()
+
 
 def main():
     logging.basicConfig(
