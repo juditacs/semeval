@@ -13,16 +13,15 @@ def log(s):
     stderr.write(s)
     stderr.flush()
 
-log('loading wordnet...')
 from nltk.corpus import wordnet
-log('done\n')
-logging.getLogger().setLevel(logging.DEBUG)
 
 from nltk.corpus import stopwords as nltk_stopwords
 from nltk.tag.hunpos import HunposTagger
 from nltk.tokenize import word_tokenize
 
 from pymachine.src.wrapper import Wrapper as MachineWrapper
+
+assert MachineWrapper  # silence pyflakes
 
 __EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/freqs.en'
 
@@ -156,7 +155,6 @@ class AlignAndPenalize(object):
         logging.debug(u'got this: {0}, {1}'.format(x, y))
         for sx in self.sts_wrapper.sense_cache[x]:
             sim = self.similarity_wrapper(sx, y, x_pos, y_pos)
-            #logging.debug("({0}, {1}): {2}".format(sx, y, sim))
             if sim > max1:
                 max1 = sim
                 best_pair_1 = (sx, y)
@@ -164,7 +162,6 @@ class AlignAndPenalize(object):
         best_pair_2 = None
         for sy in self.sts_wrapper.sense_cache[y]:
             sim = self.similarity_wrapper(x, sy, x_pos, y_pos)
-            #logging.debug("({0}, {1}): {2}".format(sy, x, sim))
             if sim > max2:
                 max2 = sim
                 best_pair_2 = (sy, x)
@@ -173,7 +170,7 @@ class AlignAndPenalize(object):
             sim, best_pair = max1, best_pair_1
         else:
             sim, best_pair = max2, best_pair_2
-        logging.debug('best pair: {0} ({1})'.format(sim, best_pair))
+        #logging.info('best pair: {0} ({1})'.format(sim, best_pair))
         return sim
 
     def baseline_similarity(self, x, y, x_i, y_i):
@@ -325,9 +322,11 @@ class AlignAndPenalize(object):
         P1B = 0.0
         for t, gt, score in B1:
             P1B += score + 0.5
+        P1B /= float(2 * len(self.sen1))
         P2B = 0.0
         for t, gt, score in B2:
             P2B += score + 0.5
+        P2B /= float(2 * len(self.sen2))
         self.P = P1A + P2A + P1B + P2B
         logging.info('P1A: {0} P2A: {1} P1B: {2} P2B: {3}'.format(
             P1A, P2A, P1B, P2B))
@@ -377,8 +376,8 @@ class LSAWrapper(object):
         if self.is_oov(word1) or self.is_oov(word2):
             return None
         sim = self.lsa_model.similarity(word1, word2)
-        #logging.debug(u'LSA sim: {0} -- {1} -- {2}'.format(
-        #    word1, word2, sim).encode('utf8'))
+        logging.info(u'LSA sim: {0} -- {1} -- {2}'.format(
+            word1, word2, sim).encode('utf8'))
         return sim
 
 
@@ -474,18 +473,18 @@ class STSWrapper(object):
 
 def main():
     logging.basicConfig(
-        level=logging.WARNING,
+        level=logging.INFO,
         format="%(asctime)s : " +
         "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
+
+    #lsa_wrapper = LSAWrapper()
+    #sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity)
 
     machine_wrapper = MachineWrapper(
         os.path.join(os.environ['MACHINEPATH'],
                      'pymachine/tst/definitions_test.cfg'),
         include_longman=True)
-
-    lsa_wrapper = LSAWrapper()
-    sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity)
-    #sts_wrapper = STSWrapper(sim_function=machine_wrapper.word_similarity)
+    sts_wrapper = STSWrapper(sim_function=machine_wrapper.word_similarity)
     #sts_wrapper = STSWrapper()
     for c, line in enumerate(stdin):
         sts_wrapper.process_line(line)
@@ -493,5 +492,6 @@ def main():
             logging.info('{0}...'.format(c))
 
 if __name__ == '__main__':
-    import cProfile
-    cProfile.run('main()', 'stats_new.cprofile')
+    main()
+    #import cProfile
+    #cProfile.run('main()', 'stats_new.cprofile')
