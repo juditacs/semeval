@@ -126,7 +126,7 @@ class AlignAndPenalize(object):
                 n = float(len(wn_sen))
                 for s in wn_sen:
                     w = s.name().split('.')[0]
-                    s_sen = wordnet.synsets(w)
+                    s_sen = wordnet.synsets(s.name())
                     if len(s_sen) / n <= 1.0 / 3:
                         senses.add(w)
             self.sts_wrapper.sense_cache[t['token']] = senses
@@ -361,6 +361,126 @@ class LSAWrapper(object):
 
     def __init__(self, vector_fn='vectors_example.bin'):
         self.lsa_model = Word2Vec.load_word2vec_format(os.path.join(os.environ['LSA_DIR'], vector_fn), binary=True)
+        self.alpha = 0.25
+
+    def wordnet_boost(self, word1, word2):
+        sigsets1 = self.significant_synset(word1)
+        sigsets2 = self.significant_synset(word2)
+        if sigsets1 & sigsets2:
+            # the two words appear together in the same synset
+            return 0
+        if self.is_direct_hypernym(sigsets1, sigsets2):
+            return 1
+        if self.is_two_link_indirect_hypernym(sigsets1, sigsets2):
+            return 2
+        adj1 = set(filter(lambda x: x.pos() == 'a', sigsets1))
+        adj2 = set(filter(lambda x: x.pos() == 'a', sigsets1))
+        if adj1 and adj2:
+            if self.is_direct_similar_to(adj1, adj2):
+                return 1
+            if self.is_two_link_indirect_similar_to(adj1, adj2):
+                return 2
+        if self.is_derivationally_related(sigsets1, sigsets2):
+            return 1
+        #TODO
+        # word is the head of the gloss of the other or its direct hypernym or one of its direct hyponyms
+        # word appears frequently in the gloss of the other or its direct hypernym or one of its direct hyponyms
+        # see Collins, 1999
+        return None
+
+    def is_derivationally_related(self, synsets1, synsets2):
+        lemmas1 = set()
+        der1 = set()
+        for s1 in synsets1:
+            lemmas1 |= set(s1.lemmas())
+        lemmas2 = set()
+        for s2 in synsets2:
+            lemmas2 |= set(s2.lemmas())
+        for l1 in lemmas1:
+            der1 |= set(l1.derivationally_related_forms())
+        if der1 & lemmas2:
+            return True
+        der2 = set()
+        for l2 in lemmas2:
+            der2 |= set(l2.derivationally_related_forms())
+        if der2 & lemmas2:
+            return True
+        return False
+
+    def wn_freq(self, synset):
+        return sum(l.count() for l in synset.lemmas())
+
+    def is_two_link_indirect_similar_to(self, adj1, adj2):
+        sim1 = set()
+        for s in adj1:
+            for s2 in s.similar_tos():
+                sim1 |= set(s2.similar_tos())
+        if adj2 & sim1:
+            return True
+        sim2 = set()
+        for s in adj2:
+            for s2 in s.similar_tos():
+                sim2 |= set(s2.similar_tos())
+        if adj1 & sim2:
+            return True
+        return False
+
+    def is_direct_similar_to(self, adj1, adj2):
+        sim1 = set()
+        for s in adj1:
+            sim1 |= set(s.similar_tos())
+        if sim1 & adj2:
+            return True
+        sim2 = set()
+        for s in adj2:
+            sim2 |= set(s.similar_tos())
+        if sim2 & adj1:
+            return True
+        return False
+
+    def significant_synset(self, word):
+        synsets = wordnet.synsets(word)
+        if len(synsets) == 0:
+            logging.info('No synsets for word: {0}'.format(word.encode('utf8')))
+            return set()
+        sigsets = set([synsets[0]])
+        for s in synsets[1:]:
+            if self.wn_freq(s) >= 5:
+                sigsets.add(s)
+                continue
+            if s.lemmas()[0].name() == word and len(s.lemmas()) < 8:
+                # I am no sure what they mean by Wordnet sense number
+                sigsets.add(s)
+                continue
+        return sigsets
+
+    def is_two_link_indirect_hypernym(self, synsets1, synsets2):
+        hyps1 = set()
+        for s1 in synsets1:
+            for hyp in s1.hypernyms():
+                hyps1 |= set(hyp.hypernyms())
+        if synsets2 & hyps1:
+            return True
+        hyps2 = set()
+        for s2 in synsets2:
+            for hyp in s2.hypernyms():
+                hyps2 |= set(hyp.hypernyms())
+        if synsets1 & hyps2:
+            return True
+        return False
+
+    def is_direct_hypernym(self, synsets1, synsets2):
+        hyps1 = set()
+        for s1 in synsets1:
+            hyps1 |= set(s1.hypernyms())
+        if synsets2 & hyps1:
+            return True
+        hyps2 = set()
+        for s2 in synsets2:
+            hyps2 |= set(s2.hypernyms())
+        if synsets1 & hyps2:
+            return True
+        return False
 
     def is_oov(self, word):
         try:
@@ -373,8 +493,15 @@ class LSAWrapper(object):
         if self.is_oov(word1) or self.is_oov(word2):
             return None
         sim = self.lsa_model.similarity(word1, word2)
-        #logging.debug(u'LSA sim: {0} -- {1} -- {2}'.format(word1, word2, sim).encode('utf8'))
-        return sim
+        if sim < 0.1:
+            logging.debug(u'LSA sim too low (less than 0.1), setting it to 0.0: {0} -- {1} -- {2}'.format(word1, word2, sim).encode('utf8'))
+            return 0.0
+        D = self.wordnet_boost(word1, word2)
+        if D is not None:
+            logging.info(u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(word1, word2, D).encode('utf8'))
+            sim = sim + 0.5 * math.exp(-self.alpha * D)
+        logging.info(u'LSA sim: {0} -- {1} -- {2}'.format(word1, word2, sim).encode('utf8'))
+        return sim if sim <= 1 else 1
 
 
 class STSWrapper(object):
@@ -464,10 +591,10 @@ def main():
         format="%(asctime)s : " +
         "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
 
-    machine_wrapper = MachineWrapper(
-        os.path.join(os.environ['MACHINEPATH'],
-                     'pymachine/tst/definitions_test.cfg'),
-        include_longman=True)
+#    machine_wrapper = MachineWrapper(
+#        os.path.join(os.environ['MACHINEPATH'],
+#                     'pymachine/tst/definitions_test.cfg'),
+#        include_longman=True)
 
     lsa_wrapper = LSAWrapper()
     sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity)
