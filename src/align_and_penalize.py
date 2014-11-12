@@ -4,7 +4,7 @@ import math
 import os
 import re
 import string
-from sys import stderr, stdin
+from sys import stderr, stdin, argv
 
 from gensim.models import Word2Vec
 
@@ -178,14 +178,19 @@ class AlignAndPenalize(object):
 
     def similarity_wrapper(self, x, y, x_i, y_i):
         if self.is_num_equivalent(x, y):
+            logging.info('equivalent numbers: {0}, {1}'.format(x, y))
             return 1
         if self.is_pronoun_equivalent(x, y):
+            logging.info('equivalent pronouns: {0}, {1}'.format(x, y))
             return 1
         if self.is_acronym(x, y, x_i, y_i):
+            logging.info('acronym match: {0}, {1}'.format(x, y))
             return 1
         if self.is_headof(x, y, x_i, y_i):
+            logging.info('head_of match: {0}, {1}'.format(x, y))
             return 1
         if self.is_consecutive_match(x, y, x_i, y_i):
+            logging.info('consecutive match: {0}, {1}'.format(x, y))
             return 1
 
         sim = self.sim_function(x, y, x_i, y_i)
@@ -472,8 +477,10 @@ class STSWrapper(object):
 
 
 def main():
+    batch = len(argv) == 2 and argv[1] == 'batch'
+    log_level = logging.WARNING if batch else logging.INFO
     logging.basicConfig(
-        level=logging.INFO,
+        level=log_level,
         format="%(asctime)s : " +
         "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
 
@@ -483,7 +490,7 @@ def main():
     machine_wrapper = MachineWrapper(
         os.path.join(os.environ['MACHINEPATH'],
                      'pymachine/tst/definitions_test.cfg'),
-        include_longman=True)
+        include_longman=True, batch=batch)
     sts_wrapper = STSWrapper(sim_function=machine_wrapper.word_similarity)
     #sts_wrapper = STSWrapper()
     for c, line in enumerate(stdin):
