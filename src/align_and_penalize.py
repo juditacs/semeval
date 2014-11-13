@@ -289,7 +289,11 @@ class AlignAndPenalize(object):
         return 1 / math.log(2)
 
     def weight_pos(self, pos):
-        return 0.5 + 0.5 * int(pos in AlignAndPenalize.preferred_pos)
+        if pos in AlignAndPenalize.preferred_pos:
+            logging.info('preferred pos: {0}'.format(pos))
+            return 1
+        logging.info('not preferred pos: {0}'.format(pos))
+        return 0.5
 
     def is_antonym(self, w1, w2):
         if w1 in self.sts_wrapper.antonym_cache(w2):
@@ -316,6 +320,8 @@ class AlignAndPenalize(object):
             pos = t['pos']
             token = t['token']
             P1A += score + self.weight_freq(token) * self.weight_pos(pos)
+            logging.info('penalty for {0}: wf: {1}, wp: {2}'.format(
+                (token, pos), self.weight_freq(token), self.weight_pos(pos)))
         P1A /= float(2 * len(self.sen1))
         P2A = 0.0
         for t in A2:
@@ -323,6 +329,8 @@ class AlignAndPenalize(object):
             pos = t['pos']
             token = t['token']
             P2A += score + self.weight_freq(token) * self.weight_pos(pos)
+            logging.info('penalty for {0}: wf: {1}, wp: {2}'.format(
+                (token, pos), self.weight_freq(token), self.weight_pos(pos)))
         P2A /= float(2 * len(self.sen2))
         P1B = 0.0
         for t, gt, score in B1:
@@ -434,8 +442,9 @@ class STSWrapper(object):
     def parse_sts_line(self, fields):
         sen1_toks, sen2_toks = map(word_tokenize, fields)
         try:
-            sen1_pos, sen2_pos = map(self.hunpos_tagger.tag,
-                                     (sen1_toks, sen2_toks))
+            sen1_pos, sen2_pos = map(
+                lambda t: [tok[1] for tok in self.hunpos_tagger.tag(t)],
+                (sen1_toks, sen2_toks))
         except UnicodeEncodeError:
             logging.warning('failed to run POS-tagging: {0}'.format(
                 (sen1_toks, sen2_toks)))
@@ -495,8 +504,8 @@ def main():
     #sts_wrapper = STSWrapper()
     for c, line in enumerate(stdin):
         sts_wrapper.process_line(line)
-        if c % 10 == 0:
-            logging.info('{0}...'.format(c))
+        if c % 100 == 0:
+            logging.warning('{0}...'.format(c))
 
 if __name__ == '__main__':
     main()
