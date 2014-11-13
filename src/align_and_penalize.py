@@ -464,7 +464,8 @@ class STSWrapper(object):
 
     def is_frequent_adverb(self, word, pos):
         return self.frequent_adverbs_cache.setdefault(
-            (pos[:2] == 'RB' and self.global_freqs.get(word, 2) > 500000))
+            (pos is not None and pos[:2] == 'RB' and
+             self.global_freqs.get(word, 2) > 500000))
 
     def process_line(self, line):
         fields = line.decode('utf8').strip().split('\t')
