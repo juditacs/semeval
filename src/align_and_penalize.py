@@ -4,7 +4,7 @@ import math
 import os
 import re
 import string
-from sys import stderr, stdin
+from sys import stderr, stdin, argv
 
 from gensim.models import Word2Vec
 
@@ -13,16 +13,15 @@ def log(s):
     stderr.write(s)
     stderr.flush()
 
-log('loading wordnet...')
 from nltk.corpus import wordnet
-log('done\n')
-logging.getLogger().setLevel(logging.DEBUG)
 
 from nltk.corpus import stopwords as nltk_stopwords
 from nltk.tag.hunpos import HunposTagger
 from nltk.tokenize import word_tokenize
 
 #from pymachine.src.wrapper import Wrapper as MachineWrapper
+
+#assert MachineWrapper  # silence pyflakes
 
 __EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/freqs.en'
 
@@ -139,7 +138,7 @@ class AlignAndPenalize(object):
                 for y_i, y in enumerate(self.sen2)))
             x['most_sim_word'] = most_sim
             x['most_sim_score'] = score
-            logging.info('{0}. {1} -> {2} ({3})'.format(
+            logging.info(u'{0}. {1} -> {2} ({3})'.format(
                 x_i, x['token'], most_sim, score))
         for y_i, y in enumerate(self.sen2):
             score, most_sim = max((
@@ -147,7 +146,7 @@ class AlignAndPenalize(object):
                 for x_i, x in enumerate(self.sen1)))
             y['most_sim_word'] = most_sim
             y['most_sim_score'] = score
-            logging.info('{0}. {1} -> {2} ({3})'.format(
+            logging.info(u'{0}. {1} -> {2} ({3})'.format(
                 y_i, y['token'], most_sim, score))
 
     def sim_xy(self, x, y, x_pos, y_pos):
@@ -156,7 +155,6 @@ class AlignAndPenalize(object):
         logging.debug(u'got this: {0}, {1}'.format(x, y))
         for sx in self.sts_wrapper.sense_cache[x]:
             sim = self.similarity_wrapper(sx, y, x_pos, y_pos)
-            #logging.debug("({0}, {1}): {2}".format(sx, y, sim))
             if sim > max1:
                 max1 = sim
                 best_pair_1 = (sx, y)
@@ -164,7 +162,6 @@ class AlignAndPenalize(object):
         best_pair_2 = None
         for sy in self.sts_wrapper.sense_cache[y]:
             sim = self.similarity_wrapper(x, sy, x_pos, y_pos)
-            #logging.debug("({0}, {1}): {2}".format(sy, x, sim))
             if sim > max2:
                 max2 = sim
                 best_pair_2 = (sy, x)
@@ -173,7 +170,7 @@ class AlignAndPenalize(object):
             sim, best_pair = max1, best_pair_1
         else:
             sim, best_pair = max2, best_pair_2
-        logging.debug('best pair: {0} ({1})'.format(sim, best_pair))
+        #logging.info('best pair: {0} ({1})'.format(sim, best_pair))
         return sim
 
     def baseline_similarity(self, x, y, x_i, y_i):
@@ -181,14 +178,19 @@ class AlignAndPenalize(object):
 
     def similarity_wrapper(self, x, y, x_i, y_i):
         if self.is_num_equivalent(x, y):
+            logging.info('equivalent numbers: {0}, {1}'.format(x, y))
             return 1
         if self.is_pronoun_equivalent(x, y):
+            logging.info('equivalent pronouns: {0}, {1}'.format(x, y))
             return 1
         if self.is_acronym(x, y, x_i, y_i):
+            logging.info('acronym match: {0}, {1}'.format(x, y))
             return 1
         if self.is_headof(x, y, x_i, y_i):
+            logging.info('head_of match: {0}, {1}'.format(x, y))
             return 1
         if self.is_consecutive_match(x, y, x_i, y_i):
+            logging.info('consecutive match: {0}, {1}'.format(x, y))
             return 1
 
         sim = self.sim_function(x, y, x_i, y_i)
@@ -278,6 +280,7 @@ class AlignAndPenalize(object):
             raise Exception(
                 'alignment score > 1: {0} {1}'.format(self.sen1, self.sen2))
         self.penalty()
+        logging.info('T={0}, P={1}'.format(self.T, self.P))
         return self.T - self.P
 
     def weight_freq(self, token):
@@ -286,7 +289,11 @@ class AlignAndPenalize(object):
         return 1 / math.log(2)
 
     def weight_pos(self, pos):
-        return 0.5 + 0.5 * int(pos in AlignAndPenalize.preferred_pos)
+        if pos in AlignAndPenalize.preferred_pos:
+            logging.info('preferred pos: {0}'.format(pos))
+            return 1
+        logging.info('not preferred pos: {0}'.format(pos))
+        return 0.5
 
     def is_antonym(self, w1, w2):
         if w1 in self.sts_wrapper.antonym_cache(w2):
@@ -313,6 +320,8 @@ class AlignAndPenalize(object):
             pos = t['pos']
             token = t['token']
             P1A += score + self.weight_freq(token) * self.weight_pos(pos)
+            logging.info('penalty for {0}: wf: {1}, wp: {2}'.format(
+                (token, pos), self.weight_freq(token), self.weight_pos(pos)))
         P1A /= float(2 * len(self.sen1))
         P2A = 0.0
         for t in A2:
@@ -320,14 +329,20 @@ class AlignAndPenalize(object):
             pos = t['pos']
             token = t['token']
             P2A += score + self.weight_freq(token) * self.weight_pos(pos)
+            logging.info('penalty for {0}: wf: {1}, wp: {2}'.format(
+                (token, pos), self.weight_freq(token), self.weight_pos(pos)))
         P2A /= float(2 * len(self.sen2))
         P1B = 0.0
         for t, gt, score in B1:
             P1B += score + 0.5
+        P1B /= float(2 * len(self.sen1))
         P2B = 0.0
         for t, gt, score in B2:
             P2B += score + 0.5
+        P2B /= float(2 * len(self.sen2))
         self.P = P1A + P2A + P1B + P2B
+        logging.info('P1A: {0} P2A: {1} P1B: {2} P2B: {3}'.format(
+            P1A, P2A, P1B, P2B))
         if self.P < 0:
             raise Exception(
                 'negative penalty: {0}\n'.format(self.P) +
@@ -610,6 +625,9 @@ class WordnetCache(object):
 
 class STSWrapper(object):
 
+    custom_stopwords = set([])
+    #custom_stopwords = set(["'s"])
+
     def __init__(self, sim_function='lsa_sim'):
         logging.info('reading global frequencies...')
         self.sim_function = sim_function
@@ -618,7 +636,7 @@ class STSWrapper(object):
         self.frequent_adverbs_cache = {}
         self.punctuation = set(string.punctuation)
         self.hunpos_tagger = STSWrapper.get_hunpos_tagger()
-        self.stopwords = nltk_stopwords.words('english')
+        self.stopwords = STSWrapper.get_stopwords()
         self._antonym_cache = {}
 
     def antonym_cache(self, key):
@@ -627,7 +645,8 @@ class STSWrapper(object):
             for synset in wordnet.synsets(key):
                 for lemma in synset.lemmas():
                     for antonym in lemma.antonyms():
-                        self._antonym_cache[key].add(antonym.name().split('.')[0])
+                        self._antonym_cache[key].add(
+                            antonym.name().split('.')[0])
         return self._antonym_cache[key]
 
     @staticmethod
@@ -636,6 +655,11 @@ class STSWrapper(object):
         hunpos_binary = os.path.join(hunmorph_dir, 'hunpos-tag')
         hunpos_model = os.path.join(hunmorph_dir, 'en_wsj.model')
         return HunposTagger(hunpos_model, hunpos_binary)
+
+    @staticmethod
+    def get_stopwords():
+        nltk_sw = set(nltk_stopwords.words('english'))
+        return nltk_sw.union(STSWrapper.custom_stopwords)
 
     def parse_twitter_line(self, fd):
         sen1 = fd[2].split(' ')
@@ -647,8 +671,9 @@ class STSWrapper(object):
     def parse_sts_line(self, fields):
         sen1_toks, sen2_toks = map(word_tokenize, fields)
         try:
-            sen1_pos, sen2_pos = map(self.hunpos_tagger.tag,
-                                     (sen1_toks, sen2_toks))
+            sen1_pos, sen2_pos = map(
+                lambda t: [tok[1] for tok in self.hunpos_tagger.tag(t)],
+                (sen1_toks, sen2_toks))
         except UnicodeEncodeError:
             logging.warning('failed to run POS-tagging: {0}'.format(
                 (sen1_toks, sen2_toks)))
@@ -668,7 +693,8 @@ class STSWrapper(object):
 
     def is_frequent_adverb(self, word, pos):
         return self.frequent_adverbs_cache.setdefault(
-            (pos[:2] == 'RB' and self.global_freqs.get(word, 2) > 500000))
+            (pos is not None and pos[:2] == 'RB' and
+             self.global_freqs.get(word, 2) > 500000))
 
     def process_line(self, line):
         fields = line.decode('utf8').strip().split('\t')
@@ -690,25 +716,31 @@ class STSWrapper(object):
 
 
 def main():
+    batch = len(argv) == 2 and argv[1] == 'batch'
+    log_level = logging.WARNING if batch else logging.INFO
     logging.basicConfig(
-        level=logging.INFO,
+        level=log_level,
         format="%(asctime)s : " +
         "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
-
-#    machine_wrapper = MachineWrapper(
-#        os.path.join(os.environ['MACHINEPATH'],
-#                     'pymachine/tst/definitions_test.cfg'),
-#        include_longman=True)
 
     lsa_wrapper = LSAWrapper()
     sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity)
     #sts_wrapper = STSWrapper(sim_function=machine_wrapper.word_similarity)
+    #lsa_wrapper = LSAWrapper()
+    #sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity)
+
+#    machine_wrapper = MachineWrapper(
+#        os.path.join(os.environ['MACHINEPATH'],
+#                     'pymachine/tst/definitions_test.cfg'),
+#        include_longman=True, batch=batch)
+    #sts_wrapper = STSWrapper(sim_function=machine_wrapper.word_similarity)
     #sts_wrapper = STSWrapper()
     for c, line in enumerate(stdin):
         sts_wrapper.process_line(line)
-        if c % 10 == 0:
-            logging.info('{0}...'.format(c))
+        if c % 100 == 0:
+            logging.warning('{0}...'.format(c))
 
 if __name__ == '__main__':
-    import cProfile
-    cProfile.run('main()', 'stats_new.cprofile')
+    main()
+    #import cProfile
+    #cProfile.run('main()', 'stats_new.cprofile')
