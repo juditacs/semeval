@@ -22,7 +22,7 @@ from nltk.corpus import stopwords as nltk_stopwords
 from nltk.tag.hunpos import HunposTagger
 from nltk.tokenize import word_tokenize
 
-from pymachine.src.wrapper import Wrapper as MachineWrapper
+#from pymachine.src.wrapper import Wrapper as MachineWrapper
 
 __EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/freqs.en'
 
@@ -362,10 +362,14 @@ class LSAWrapper(object):
     def __init__(self, vector_fn='vectors_example.bin'):
         self.lsa_model = Word2Vec.load_word2vec_format(os.path.join(os.environ['LSA_DIR'], vector_fn), binary=True)
         self.alpha = 0.25
+        self.cache = {}
+        self.wn_cache = WordnetCache()
 
     def wordnet_boost(self, word1, word2):
-        sigsets1 = self.significant_synset(word1)
-        sigsets2 = self.significant_synset(word2)
+        sigsets1 = set(self.wn_cache.get_synsets(word1))
+        sigsets2 = set(self.wn_cache.get_synsets(word2))
+        #sigsets1 = self.significant_synset(word1)
+        #sigsets2 = self.significant_synset(word2)
         if sigsets1 & sigsets2:
             # the two words appear together in the same synset
             return 0
@@ -413,14 +417,12 @@ class LSAWrapper(object):
     def is_two_link_indirect_similar_to(self, adj1, adj2):
         sim1 = set()
         for s in adj1:
-            for s2 in s.similar_tos():
-                sim1 |= set(s2.similar_tos())
+            sim1 |= s.two_link_similar_tos()
         if adj2 & sim1:
             return True
         sim2 = set()
         for s in adj2:
-            for s2 in s.similar_tos():
-                sim2 |= set(s2.similar_tos())
+            sim2 |= s.two_link_similar_tos()
         if adj1 & sim2:
             return True
         return False
@@ -456,15 +458,13 @@ class LSAWrapper(object):
 
     def is_two_link_indirect_hypernym(self, synsets1, synsets2):
         hyps1 = set()
-        for s1 in synsets1:
-            for hyp in s1.hypernyms():
-                hyps1 |= set(hyp.hypernyms())
+        for s in synsets1:
+            hyps1 |= s.two_link_hypernyms()
         if synsets2 & hyps1:
             return True
         hyps2 = set()
-        for s2 in synsets2:
-            for hyp in s2.hypernyms():
-                hyps2 |= set(hyp.hypernyms())
+        for s in synsets2:
+            hyps2 |= s.two_link_hypernyms()
         if synsets1 & hyps2:
             return True
         return False
@@ -490,6 +490,9 @@ class LSAWrapper(object):
             return True
 
     def word_similarity(self, word1, word2, pos1, pos2):
+        d = self.lookup_cache(word1, word2)
+        if not d is None:
+            return d
         if self.is_oov(word1) or self.is_oov(word2):
             return None
         sim = self.lsa_model.similarity(word1, word2)
@@ -501,7 +504,108 @@ class LSAWrapper(object):
             logging.info(u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(word1, word2, D).encode('utf8'))
             sim = sim + 0.5 * math.exp(-self.alpha * D)
         logging.info(u'LSA sim: {0} -- {1} -- {2}'.format(word1, word2, sim).encode('utf8'))
-        return sim if sim <= 1 else 1
+        d = sim if sim <= 1 else 1
+        self.store_cache(word1, word2, d)
+        return d
+
+    def lookup_cache(self, word1, word2):
+        if not word1 in self.cache:
+            return None
+        if not word2 in self.cache[word1]:
+            return None
+        return self.cache[word1][word2]
+
+    def store_cache(self, word1, word2, score):
+        if not word1 in self.cache:
+            self.cache[word1] = {}
+        self.cache[word1][word2] = score
+
+
+class SynsetWrapper(object):
+
+    def __init__(self, synset):
+        self.synset = synset
+        self._lemmas = None
+        self._freq = None
+        self._hypernyms = None
+        self._two_link_hypernyms = None
+        self._pos = None
+        self._similar_tos = None
+        self._two_link_similar_tos = None
+
+    def __hash__(self):
+        return hash(self.synset)
+
+    def freq(self):
+        if self._freq is None:
+            self._freq = 0
+            for lemma in self.lemmas:
+                self._freq += lemma.count()
+        return self._freq
+
+    def lemmas(self):
+        if self._lemmas is None:
+            self._lemmas = []
+            for lemma in self.synset.lemmas():
+                self._lemmas.append(lemma)
+        return self._lemmas
+
+    def hypernyms(self):
+        if self._hypernyms is None:
+            self._hypernyms = set()
+            for h in self.synset.hypernyms():
+                self._hypernyms.add(SynsetWrapper(h))
+        return self._hypernyms
+
+    def two_link_hypernyms(self):
+        if self._two_link_hypernyms is None:
+            self._two_link_hypernyms = set()
+            for hyp in self.hypernyms():
+                self._two_link_hypernyms.add(SynsetWrapper(hyp))
+        return self._two_link_hypernyms
+
+    def pos(self):
+        if self._pos is None:
+            self._pos = self.synset.pos()
+        return self._pos
+
+    def similar_tos(self):
+        if self._similar_tos is None:
+            self._similar_tos = set(SynsetWrapper(s) for s in self.synset.similar_tos())
+        return self._similar_tos
+
+    def two_link_similar_tos(self):
+        if self._two_link_similar_tos is None:
+            self._two_link_similar_tos = set()
+            for s in self.similar_tos():
+                self._two_link_similar_tos |= s.similar_tos()
+        return self._two_link_similar_tos
+
+
+class WordnetCache(object):
+
+    def __init__(self):
+        self.synsets = {}
+        self.synset_to_wrapper = {}
+
+    def get_synsets(self, word):
+        if not word in self.synsets:
+            candidates = wordnet.synsets(word)
+            if len(candidates) == 0:
+                self.synsets[word] = []
+            else:
+                sn = SynsetWrapper(candidates[0])
+                self.synset_to_wrapper[candidates[0]] = sn
+                self.synsets[word] = [sn]
+                for c in candidates[1:]:
+                    sw = SynsetWrapper(c)
+                    self.synset_to_wrapper[c] = sw
+                    if sw.freq >= 5:
+                        self.synsets[word].append(sw)
+                        continue
+                    if sw.lemmas()[0].name() == word and len(sw.lemmas()) < 8:
+                        self.synsets[word].append(sw)
+        return self.synsets[word]
 
 
 class STSWrapper(object):
