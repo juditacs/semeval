@@ -451,7 +451,7 @@ class LSAWrapper(object):
         der2 = set()
         for l2 in lemmas2:
             der2 |= set(l2.derivationally_related_forms())
-        if der2 & lemmas2:
+        if der2 & lemmas1:
             return True
         return False
 
