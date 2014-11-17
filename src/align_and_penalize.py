@@ -626,7 +626,7 @@ class SynsetWrapper(object):
         if self._two_link_hypernyms is None:
             self._two_link_hypernyms = set()
             for hyp in self.hypernyms():
-                self._two_link_hypernyms.add(SynsetWrapper(hyp))
+                self._two_link_hypernyms |= hyp.hypernyms()
         return self._two_link_hypernyms
 
     def pos(self):
