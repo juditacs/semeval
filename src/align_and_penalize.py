@@ -389,6 +389,7 @@ class LSAWrapper(object):
             # the two words appear together in the same synset
             return 0
         if self.is_direct_hypernym(sigsets1, sigsets2):
+            logging.info('Direct hypernym: {0} -- {1} -- score: 1'.format(word1.encode('utf8'), word2.encode('utf8')))
             return 1
         if self.is_two_link_indirect_hypernym(sigsets1, sigsets2):
             return 2
@@ -396,16 +397,44 @@ class LSAWrapper(object):
         adj2 = set(filter(lambda x: x.pos() == 'a', sigsets1))
         if adj1 and adj2:
             if self.is_direct_similar_to(adj1, adj2):
+                logging.info('Direct similar to: {0} -- {1} -- score: 1'.format(word1.encode('utf8'), word2.encode('utf8')))
                 return 1
             if self.is_two_link_indirect_similar_to(adj1, adj2):
                 return 2
         if self.is_derivationally_related(sigsets1, sigsets2):
+            logging.info('Derivationally rel: {0} -- {1} -- score: 1'.format(word1.encode('utf8'), word2.encode('utf8')))
             return 1
         #TODO
         # word is the head of the gloss of the other or its direct hypernym or one of its direct hyponyms
         # word appears frequently in the gloss of the other or its direct hypernym or one of its direct hyponyms
         # see Collins, 1999
+        if self.in_hypopernym_glosses(word1, word2, sigsets1, sigsets2):
+            return 2
         return None
+
+    def in_hypopernym_glosses(self, word1, word2, synsets1, synsets2):
+        if self.in_glosses(word1, synsets2):
+            logging.info(u'Word [{0}] in glosses of word [{1}]'.format(word1, word2).encode('utf8'))
+            return True
+        if self.in_glosses(word2, synsets1):
+            logging.info(u'Word [{0}] in glosses of word [{1}]'.format(word2, word1).encode('utf8'))
+            return True
+
+    def in_glosses(self, word, synsets):
+        defs = defaultdict(int)
+        for s in synsets:
+            for word in s.definition():
+                defs[word] += 1
+            for h in s.hypernyms():
+                for word in h.definition():
+                    defs[word] += 1
+            for h in s.hyponyms():
+                for word in h.definition():
+                    defs[word] += 1
+        top3 = [i[0] for i in sorted(defs.iteritems(), key=lambda x: -x[1])[:5]]
+        if word in top3:
+            return True
+        return False
 
     def is_derivationally_related(self, synsets1, synsets2):
         lemmas1 = set()
@@ -465,7 +494,8 @@ class LSAWrapper(object):
             if self.wn_freq(s) >= 5:
                 sigsets.add(s)
                 continue
-            if s.lemmas()[0].name() == word and len(s.lemmas()) < 8:
+            sense_num = int(s.name().split('.')[-1])
+            if s.lemmas()[0].name() == word and sense_num < 8:
                 # I am no sure what they mean by Wordnet sense number
                 sigsets.add(s)
                 continue
@@ -514,11 +544,12 @@ class LSAWrapper(object):
         if sim < 0.1:
             logging.debug(u'LSA sim too low (less than 0.1), setting it to 0.0: {0} -- {1} -- {2}'.format(word1, word2, sim).encode('utf8'))
             return 0.0
+        logging.info(u'LSA sim without wordnet: {0} -- {1} -- {2}'.format(word1, word2, sim).encode('utf8'))
         D = self.wordnet_boost(word1, word2)
         if D is not None:
             logging.info(u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(word1, word2, D).encode('utf8'))
             sim = sim + 0.5 * math.exp(-self.alpha * D)
-        logging.info(u'LSA sim: {0} -- {1} -- {2}'.format(word1, word2, sim).encode('utf8'))
+        logging.info(u'LSA sim + wn boost: {0} -- {1} -- {2}'.format(word1, word2, sim).encode('utf8'))
         d = sim if sim <= 1 else 1
         self.store_cache(word1, word2, d)
         return d
@@ -538,18 +569,30 @@ class LSAWrapper(object):
 
 class SynsetWrapper(object):
 
+    punct_re = re.compile(r'[\(\)]', re.UNICODE)
+    nltk_sw = set(nltk_stopwords.words('english'))
+
     def __init__(self, synset):
         self.synset = synset
         self._lemmas = None
         self._freq = None
         self._hypernyms = None
+        self._hyponyms = None
         self._two_link_hypernyms = None
         self._pos = None
         self._similar_tos = None
         self._two_link_similar_tos = None
+        self._definition = None
 
     def __hash__(self):
         return hash(self.synset)
+
+    def definition(self):
+        if self._definition is None:
+            def_ = self.synset.definition()
+            def_ = SynsetWrapper.punct_re.sub(' ', def_)
+            self._definition = set([w.strip() for w in def_.split() if w.strip() and not w.strip() in SynsetWrapper.nltk_sw])
+        return self._definition
 
     def freq(self):
         if self._freq is None:
@@ -564,6 +607,13 @@ class SynsetWrapper(object):
             for lemma in self.synset.lemmas():
                 self._lemmas.append(lemma)
         return self._lemmas
+
+    def hyponyms(self):
+        if self._hyponyms is None:
+            self._hyponyms = set()
+            for h in self.synset.hyponyms():
+                self._hyponyms.add(SynsetWrapper(h))
+        return self._hyponyms
 
     def hypernyms(self):
         if self._hypernyms is None:
