@@ -19,9 +19,9 @@ from nltk.corpus import stopwords as nltk_stopwords
 from nltk.tag.hunpos import HunposTagger
 from nltk.tokenize import word_tokenize
 
-#from pymachine.src.wrapper import Wrapper as MachineWrapper
+from pymachine.src.wrapper import Wrapper as MachineWrapper
 
-#assert MachineWrapper  # silence pyflakes
+assert MachineWrapper  # silence pyflakes
 
 __EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/freqs.en'
 
@@ -375,7 +375,8 @@ def jaccard(s1, s2):
 class LSAWrapper(object):
 
     def __init__(self, vector_fn='vectors_example.bin'):
-        self.lsa_model = Word2Vec.load_word2vec_format(os.path.join(os.environ['LSA_DIR'], vector_fn), binary=True)
+        self.lsa_model = Word2Vec.load_word2vec_format(
+            os.path.join(os.environ['LSA_DIR'], vector_fn), binary=True)
         self.alpha = 0.25
         self.cache = {}
         self.wn_cache = WordnetCache()
@@ -389,7 +390,8 @@ class LSAWrapper(object):
             # the two words appear together in the same synset
             return 0
         if self.is_direct_hypernym(sigsets1, sigsets2):
-            logging.info('Direct hypernym: {0} -- {1} -- score: 1'.format(word1.encode('utf8'), word2.encode('utf8')))
+            logging.info('Direct hypernym: {0} -- {1} -- score: 1'.format(
+                word1.encode('utf8'), word2.encode('utf8')))
             return 1
         if self.is_two_link_indirect_hypernym(sigsets1, sigsets2):
             return 2
@@ -397,27 +399,35 @@ class LSAWrapper(object):
         adj2 = set(filter(lambda x: x.pos() == 'a', sigsets1))
         if adj1 and adj2:
             if self.is_direct_similar_to(adj1, adj2):
-                logging.info('Direct similar to: {0} -- {1} -- score: 1'.format(word1.encode('utf8'), word2.encode('utf8')))
+                logging.info(
+                    'Direct similar to: {0} -- {1} -- score: 1'.format(
+                        word1.encode('utf8'), word2.encode('utf8')))
                 return 1
             if self.is_two_link_indirect_similar_to(adj1, adj2):
                 return 2
         if self.is_derivationally_related(sigsets1, sigsets2):
-            logging.info('Derivationally rel: {0} -- {1} -- score: 1'.format(word1.encode('utf8'), word2.encode('utf8')))
+            logging.info('Derivationally rel: {0} -- {1} -- score: 1'.format(
+                word1.encode('utf8'), word2.encode('utf8')))
             return 1
-        #TODO
-        # word is the head of the gloss of the other or its direct hypernym or one of its direct hyponyms
-        # word appears frequently in the gloss of the other or its direct hypernym or one of its direct hyponyms
-        # see Collins, 1999
+        """
+        TODO
+        word is the head of the gloss of the other or its direct hypernym or
+        one of its direct hyponyms word appears frequently in the gloss of the
+        other or its direct hypernym or one of its direct hyponyms see
+        Collins, 1999
+        """
         if self.in_hypopernym_glosses(word1, word2, sigsets1, sigsets2):
             return 2
         return None
 
     def in_hypopernym_glosses(self, word1, word2, synsets1, synsets2):
         if self.in_glosses(word1, synsets2):
-            logging.info(u'Word [{0}] in glosses of word [{1}]'.format(word1, word2).encode('utf8'))
+            logging.info(u'Word [{0}] in glosses of word [{1}]'.format(
+                word1, word2).encode('utf8'))
             return True
         if self.in_glosses(word2, synsets1):
-            logging.info(u'Word [{0}] in glosses of word [{1}]'.format(word2, word1).encode('utf8'))
+            logging.info(u'Word [{0}] in glosses of word [{1}]'.format(
+                word2, word1).encode('utf8'))
             return True
 
     def in_glosses(self, word, synsets):
@@ -431,7 +441,8 @@ class LSAWrapper(object):
             for h in s.hyponyms():
                 for word in h.definition():
                     defs[word] += 1
-        top3 = [i[0] for i in sorted(defs.iteritems(), key=lambda x: -x[1])[:5]]
+        top3 = [i[0] for i in sorted(defs.iteritems(),
+                                     key=lambda x: -x[1])[:5]]
         if word in top3:
             return True
         return False
@@ -487,7 +498,8 @@ class LSAWrapper(object):
     def significant_synset(self, word):
         synsets = wordnet.synsets(word)
         if len(synsets) == 0:
-            logging.info('No synsets for word: {0}'.format(word.encode('utf8')))
+            logging.info(
+                'No synsets for word: {0}'.format(word.encode('utf8')))
             return set()
         sigsets = set([synsets[0]])
         for s in synsets[1:]:
@@ -542,14 +554,19 @@ class LSAWrapper(object):
             return None
         sim = self.lsa_model.similarity(word1, word2)
         if sim < 0.1:
-            logging.debug(u'LSA sim too low (less than 0.1), setting it to 0.0: {0} -- {1} -- {2}'.format(word1, word2, sim).encode('utf8'))
+            logging.debug(u'LSA sim too low (less than 0.1), ' +
+                          'setting it to 0.0: {0} -- {1} -- {2}'.format(
+                              word1, word2, sim).encode('utf8'))
             return 0.0
-        logging.info(u'LSA sim without wordnet: {0} -- {1} -- {2}'.format(word1, word2, sim).encode('utf8'))
+        logging.info(u'LSA sim without wordnet: {0} -- {1} -- {2}'.format(
+            word1, word2, sim).encode('utf8'))
         D = self.wordnet_boost(word1, word2)
         if D is not None:
-            logging.info(u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(word1, word2, D).encode('utf8'))
+            logging.info(u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(
+                word1, word2, D).encode('utf8'))
             sim = sim + 0.5 * math.exp(-self.alpha * D)
-        logging.info(u'LSA sim + wn boost: {0} -- {1} -- {2}'.format(word1, word2, sim).encode('utf8'))
+        logging.info(u'LSA sim + wn boost: {0} -- {1} -- {2}'.format(
+            word1, word2, sim).encode('utf8'))
         d = sim if sim <= 1 else 1
         self.store_cache(word1, word2, d)
         return d
@@ -591,7 +608,9 @@ class SynsetWrapper(object):
         if self._definition is None:
             def_ = self.synset.definition()
             def_ = SynsetWrapper.punct_re.sub(' ', def_)
-            self._definition = set([w.strip() for w in def_.split() if w.strip() and not w.strip() in SynsetWrapper.nltk_sw])
+            self._definition = set(
+                [w.strip() for w in def_.split() if (
+                    w.strip() and not w.strip() in SynsetWrapper.nltk_sw)])
         return self._definition
 
     def freq(self):
@@ -636,7 +655,8 @@ class SynsetWrapper(object):
 
     def similar_tos(self):
         if self._similar_tos is None:
-            self._similar_tos = set(SynsetWrapper(s) for s in self.synset.similar_tos())
+            self._similar_tos = set(
+                SynsetWrapper(s) for s in self.synset.similar_tos())
         return self._similar_tos
 
     def two_link_similar_tos(self):
@@ -766,6 +786,7 @@ class STSWrapper(object):
 
 
 def main():
+    sim_type = 'machine'
     batch = len(argv) == 2 and argv[1] == 'batch'
     log_level = logging.WARNING if batch else logging.INFO
     logging.basicConfig(
@@ -773,18 +794,18 @@ def main():
         format="%(asctime)s : " +
         "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
 
-    lsa_wrapper = LSAWrapper()
-    sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity)
-    #sts_wrapper = STSWrapper(sim_function=machine_wrapper.word_similarity)
-    #lsa_wrapper = LSAWrapper()
-    #sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity)
+    if sim_type == 'lsa':
+        lsa_wrapper = LSAWrapper()
+        sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity)
+    elif sim_type == 'machine':
+        machine_wrapper = MachineWrapper(
+            os.path.join(os.environ['MACHINEPATH'],
+                         'pymachine/tst/definitions_test.cfg'),
+            include_longman=True, batch=batch)
+        sts_wrapper = STSWrapper(sim_function=machine_wrapper.word_similarity)
+    else:
+        raise Exception('unknown similarity type: {0}'.format(sim_type))
 
-#    machine_wrapper = MachineWrapper(
-#        os.path.join(os.environ['MACHINEPATH'],
-#                     'pymachine/tst/definitions_test.cfg'),
-#        include_longman=True, batch=batch)
-    #sts_wrapper = STSWrapper(sim_function=machine_wrapper.word_similarity)
-    #sts_wrapper = STSWrapper()
     for c, line in enumerate(stdin):
         sts_wrapper.process_line(line)
         if c % 100 == 0:
