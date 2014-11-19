@@ -165,6 +165,8 @@ class AlignAndPenalize(object):
         return bigram_dist_jaccard(x, y)
 
     def similarity_wrapper(self, x, y, x_i, y_i):
+        if x == y:
+            return 1
         if self.is_num_equivalent(x, y):
             logging.info('equivalent numbers: {0}, {1}'.format(x, y))
             return 1
