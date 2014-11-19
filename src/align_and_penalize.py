@@ -20,6 +20,7 @@ from nltk.tag.hunpos import HunposTagger
 from nltk.tokenize import word_tokenize
 
 from pymachine.src.wrapper import Wrapper as MachineWrapper
+from pymachine.src.similarity import WordSimilarity as MachineWordSimilarity
 
 assert MachineWrapper  # silence pyflakes
 
@@ -802,7 +803,8 @@ def main():
             os.path.join(os.environ['MACHINEPATH'],
                          'pymachine/tst/definitions_test.cfg'),
             include_longman=True, batch=batch)
-        sts_wrapper = STSWrapper(sim_function=machine_wrapper.word_similarity)
+        machine_sim = MachineWordSimilarity(machine_wrapper)
+        sts_wrapper = STSWrapper(sim_function=machine_sim.word_similarity)
     else:
         raise Exception('unknown similarity type: {0}'.format(sim_type))
 
