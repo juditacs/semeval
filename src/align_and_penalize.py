@@ -419,17 +419,17 @@ class LSAWrapper(object):
     def in_glosses(self, word, synsets):
         defs = defaultdict(int)
         for s in synsets:
-            for word in s.definition():
-                defs[word] += 1
+            for w in s.definition():
+                defs[w] += 1
             for h in s.hypernyms():
-                for word in h.definition():
-                    defs[word] += 1
+                for w in h.definition():
+                    defs[w] += 1
             for h in s.hyponyms():
-                for word in h.definition():
-                    defs[word] += 1
-        top3 = [i[0] for i in sorted(defs.iteritems(),
+                for w in h.definition():
+                    defs[w] += 1
+        top5 = [i[0] for i in sorted(defs.iteritems(),
                                      key=lambda x: -x[1])[:5]]
-        if word in top3:
+        if word in top5:
             return True
         return False
 
