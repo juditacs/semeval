@@ -39,7 +39,7 @@ class AlignAndPenalize(object):
         'they': 'them', 'them': 'they'}
 
     def __init__(self, sen1, sen2, tags1, tags2, map_tags, wrapper,
-                 sim_function):
+                 sim_function, wn_cache):
         logging.debug('AlignAndPenalize init:')
         logging.debug('sen1: {0}'.format(sen1))
         logging.debug('sen2: {0}'.format(sen2))
@@ -51,6 +51,7 @@ class AlignAndPenalize(object):
         self.sen1 = []
         self.sen2 = []
         self.map_tags = map_tags
+        self.wn_cache = wn_cache
         for i, tok1 in enumerate(sen1):
             self.sen1.append({})
             self.sen1[-1]['token'] = tok1
@@ -116,20 +117,7 @@ class AlignAndPenalize(object):
 
     def get_senses(self):
         for t in self.sen1 + self.sen2:
-            if t['token'] in self.sts_wrapper.sense_cache:
-                t['senses'] = self.sts_wrapper.sense_cache[t['token']]
-                continue
-            senses = set([t['token']])
-            wn_sen = wordnet.synsets(t['token'])
-            if len(wn_sen) >= 10:
-                n = float(len(wn_sen))
-                for s in wn_sen:
-                    w = s.name().split('.')[0]
-                    s_sen = wordnet.synsets(s.name())
-                    if len(s_sen) / n <= 1.0 / 3:
-                        senses.add(w)
-            self.sts_wrapper.sense_cache[t['token']] = senses
-            t['senses'] = senses
+            t['senses'] = self.wn_cache.get_senses(t['token'])
 
     def get_most_similar_tokens(self):
         for x_i, x in enumerate(self.sen1):
@@ -153,14 +141,14 @@ class AlignAndPenalize(object):
         max1 = 0.0
         best_pair_1 = None
         logging.debug(u'got this: {0}, {1}'.format(x, y))
-        for sx in self.sts_wrapper.sense_cache[x]:
+        for sx in self.wn_cache.get_senses(x):
             sim = self.similarity_wrapper(sx, y, x_pos, y_pos)
             if sim > max1:
                 max1 = sim
                 best_pair_1 = (sx, y)
         max2 = 0.0
         best_pair_2 = None
-        for sy in self.sts_wrapper.sense_cache[y]:
+        for sy in self.wn_cache.get_senses(y):
             sim = self.similarity_wrapper(x, sy, x_pos, y_pos)
             if sim > max2:
                 max2 = sim
@@ -177,6 +165,8 @@ class AlignAndPenalize(object):
         return bigram_dist_jaccard(x, y)
 
     def similarity_wrapper(self, x, y, x_i, y_i):
+        if x == y:
+            return 1
         if self.is_num_equivalent(x, y):
             logging.info('equivalent numbers: {0}, {1}'.format(x, y))
             return 1
@@ -382,10 +372,8 @@ class LSAWrapper(object):
         self.wn_cache = WordnetCache()
 
     def wordnet_boost(self, word1, word2):
-        sigsets1 = set(self.wn_cache.get_synsets(word1))
-        sigsets2 = set(self.wn_cache.get_synsets(word2))
-        #sigsets1 = self.significant_synset(word1)
-        #sigsets2 = self.significant_synset(word2)
+        sigsets1 = set(self.wn_cache.get_significant_synsets(word1))
+        sigsets2 = set(self.wn_cache.get_significant_synsets(word2))
         if sigsets1 & sigsets2:
             # the two words appear together in the same synset
             return 0
@@ -433,17 +421,17 @@ class LSAWrapper(object):
     def in_glosses(self, word, synsets):
         defs = defaultdict(int)
         for s in synsets:
-            for word in s.definition():
-                defs[word] += 1
+            for w in s.definition():
+                defs[w] += 1
             for h in s.hypernyms():
-                for word in h.definition():
-                    defs[word] += 1
+                for w in h.definition():
+                    defs[w] += 1
             for h in s.hyponyms():
-                for word in h.definition():
-                    defs[word] += 1
-        top3 = [i[0] for i in sorted(defs.iteritems(),
+                for w in h.definition():
+                    defs[w] += 1
+        top5 = [i[0] for i in sorted(defs.iteritems(),
                                      key=lambda x: -x[1])[:5]]
-        if word in top3:
+        if word in top5:
             return True
         return False
 
@@ -494,24 +482,6 @@ class LSAWrapper(object):
         if sim2 & adj1:
             return True
         return False
-
-    def significant_synset(self, word):
-        synsets = wordnet.synsets(word)
-        if len(synsets) == 0:
-            logging.info(
-                'No synsets for word: {0}'.format(word.encode('utf8')))
-            return set()
-        sigsets = set([synsets[0]])
-        for s in synsets[1:]:
-            if self.wn_freq(s) >= 5:
-                sigsets.add(s)
-                continue
-            sense_num = int(s.name().split('.')[-1])
-            if s.lemmas()[0].name() == word and sense_num < 8:
-                # I am no sure what they mean by Wordnet sense number
-                sigsets.add(s)
-                continue
-        return sigsets
 
     def is_two_link_indirect_hypernym(self, synsets1, synsets2):
         hyps1 = set()
@@ -672,8 +642,9 @@ class WordnetCache(object):
     def __init__(self):
         self.synsets = {}
         self.synset_to_wrapper = {}
+        self.senses = {}
 
-    def get_synsets(self, word):
+    def get_significant_synsets(self, word):
         if not word in self.synsets:
             candidates = wordnet.synsets(word)
             if len(candidates) == 0:
@@ -692,13 +663,27 @@ class WordnetCache(object):
                         self.synsets[word].append(sw)
         return self.synsets[word]
 
+    def get_senses(self, word):
+        if not word in self.senses:
+            self.senses[word] = set([word])
+            sn = wordnet.synsets(word)
+            if len(sn) >= 10:
+                th = len(sn) / 3.0
+                for synset in sn:
+                    for lemma in synset.lemmas():
+                        lsn = wordnet.synsets(lemma.name())
+                        if len(lsn) <= th:
+                            self.senses[word].add(lemma.name().replace('_', ' '))
+            logging.info('Synonyms for word [{0}]: {1}'.format(word.encode('utf8'), self.senses[word]))
+        return self.senses[word]
+
 
 class STSWrapper(object):
 
     custom_stopwords = set([])
     #custom_stopwords = set(["'s"])
 
-    def __init__(self, sim_function='lsa_sim'):
+    def __init__(self, sim_function='lsa_sim', wn_cache=None):
         logging.info('reading global frequencies...')
         self.sim_function = sim_function
         self.read_freqs()
@@ -708,6 +693,10 @@ class STSWrapper(object):
         self.hunpos_tagger = STSWrapper.get_hunpos_tagger()
         self.stopwords = STSWrapper.get_stopwords()
         self._antonym_cache = {}
+        if wn_cache:
+            self.wn_cache = wn_cache
+        else:
+            self.wn_cache = WordnetCache()
 
     def antonym_cache(self, key):
         if not key in self._antonym_cache:
@@ -779,14 +768,15 @@ class STSWrapper(object):
         sen1, sen2, tags1, tags2 = parser(fields)
         aligner = AlignAndPenalize(sen1, sen2, tags1, tags2, map_tags,
                                    wrapper=self,
-                                   sim_function=self.sim_function)
+                                   sim_function=self.sim_function,
+                                   wn_cache=self.wn_cache)
         aligner.get_senses()
         aligner.get_most_similar_tokens()
         print aligner.sentence_similarity()
 
 
 def main():
-    sim_type = 'machine'
+    sim_type = 'lsa'
     batch = len(argv) == 2 and argv[1] == 'batch'
     log_level = logging.WARNING if batch else logging.INFO
     logging.basicConfig(
@@ -794,15 +784,17 @@ def main():
         format="%(asctime)s : " +
         "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
 
+    wn_cache = WordnetCache()
+    logging.info('Similarity type: {0}'.format(sim_type))
     if sim_type == 'lsa':
         lsa_wrapper = LSAWrapper()
-        sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity)
+        sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity, wn_cache=wn_cache)
     elif sim_type == 'machine':
         machine_wrapper = MachineWrapper(
             os.path.join(os.environ['MACHINEPATH'],
                          'pymachine/tst/definitions_test.cfg'),
             include_longman=True, batch=batch)
-        sts_wrapper = STSWrapper(sim_function=machine_wrapper.word_similarity)
+        sts_wrapper = STSWrapper(sim_function=machine_wrapper.word_similarity, wn_cache=wn_cache)
     else:
         raise Exception('unknown similarity type: {0}'.format(sim_type))
 
