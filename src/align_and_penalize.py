@@ -521,7 +521,9 @@ class LSAWrapper(object):
         d = self.lookup_cache(word1, word2)
         if not d is None:
             return d
-        if self.is_oov(word1) or self.is_oov(word2):
+        oov = filter(self.is_oov, (word1, word2))
+        if oov:
+            #logging.warning(u'OOV: {0}, no lsa similarity'.format(oov))
             return None
         sim = self.lsa_model.similarity(word1, word2)
         if sim < 0.1:
@@ -732,15 +734,15 @@ class STSWrapper(object):
 
     def parse_sts_line(self, fields):
         sen1_toks, sen2_toks = map(word_tokenize, fields)
-        try:
-            sen1_pos, sen2_pos = map(
-                lambda t: [tok[1] for tok in self.hunpos_tagger.tag(t)],
-                (sen1_toks, sen2_toks))
-        except UnicodeEncodeError:
-            logging.warning('failed to run POS-tagging: {0}'.format(
-                (sen1_toks, sen2_toks)))
-            sen1_pos = ["UNKNOWN" for tok in sen1_toks]
-            sen2_pos = ["UNKNOWN" for tok in sen2_toks]
+        logging.info('sen1 toks: {}'.format(sen1_toks))
+        logging.info('sen2 toks: {}'.format(sen2_toks))
+        sen1_pos, sen2_pos = map(
+            lambda t: [tok[1] for tok in self.hunpos_tagger.tag(t)],
+            (sen1_toks, sen2_toks))
+        logging.info('sen1 POS: {}'.format(
+            [(word, sen1_pos[i]) for i, word in enumerate(sen1_toks)]))
+        logging.info('sen2 POS: {}'.format(
+            [(word, sen2_pos[i]) for i, word in enumerate(sen2_toks)]))
         return sen1_toks, sen2_toks, sen1_pos, sen2_pos
 
     def read_freqs(self, ifn=__EN_FREQ_PATH__):
@@ -759,7 +761,7 @@ class STSWrapper(object):
              self.global_freqs.get(word, 2) > 500000))
 
     def process_line(self, line):
-        fields = line.decode('utf8').strip().split('\t')
+        fields = line.decode('latin1').strip().split('\t')
         if len(fields) == 7:
             parser = self.parse_twitter_line
             map_tags = AlignAndPenalize.twitter_map_tags
@@ -777,10 +779,29 @@ class STSWrapper(object):
         aligner.get_most_similar_tokens()
         print aligner.sentence_similarity()
 
+class HybridSimWrapper():
+    def __init__(self, lsa_wrapper, machine_sim):
+        self.lsa_wrapper = lsa_wrapper
+        self.machine_sim = machine_sim
+
+    def average_sim(self, x, y, x_i, y_i):
+        machine_sim = self.machine_sim.word_similarity(x, y, x_i, y_i)
+        lsa_sim = self.lsa_wrapper.word_similarity(x, y, x_i, y_i)
+        if machine_sim is None:
+            if lsa_sim is None:
+                sim = None
+            else:
+                sim = lsa_sim
+        elif lsa_sim is None:
+            sim = machine_sim
+        else:
+            sim = (machine_sim + lsa_sim) / 2
+
+        return sim
 
 def main():
-    sim_type = 'lsa'
-    batch = len(argv) == 2 and argv[1] == 'batch'
+    sim_type = argv[1]
+    batch = len(argv) == 3 and argv[2] == 'batch'
     log_level = logging.WARNING if batch else logging.INFO
     logging.basicConfig(
         level=log_level,
@@ -788,7 +809,7 @@ def main():
         "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
 
     wn_cache = WordnetCache()
-    logging.info('Similarity type: {0}'.format(sim_type))
+    logging.warning('Similarity type: {0}'.format(sim_type))
     if sim_type == 'lsa':
         lsa_wrapper = LSAWrapper()
         sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity,
@@ -801,6 +822,21 @@ def main():
         machine_sim = MachineWordSimilarity(machine_wrapper)
         sts_wrapper = STSWrapper(sim_function=machine_sim.word_similarity,
                                  wn_cache=wn_cache)
+
+    elif sim_type == 'hybrid':
+        lsa_wrapper = LSAWrapper()
+        machine_wrapper = MachineWrapper(
+            os.path.join(os.environ['MACHINEPATH'],
+                         'pymachine/tst/definitions_test.cfg'),
+            include_longman=True, batch=batch)
+
+        machine_sim = MachineWordSimilarity(machine_wrapper)
+
+        hybrid_sim = HybridSimWrapper(lsa_wrapper, machine_sim)
+
+        sts_wrapper = STSWrapper(sim_function=hybrid_sim.average_sim,
+                                 wn_cache=wn_cache)
+
     else:
         raise Exception('unknown similarity type: {0}'.format(sim_type))
 
