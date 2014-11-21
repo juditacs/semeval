@@ -68,6 +68,9 @@ class AlignAndPenalize(object):
         self.compound_pairs = AlignAndPenalize.get_compound_pairs(self.sen1,
                                                                   self.sen2)
 
+        self.acronym_pairs, self.head_pairs = (
+            AlignAndPenalize.get_acronym_pairs(self.sen1, self.sen2))
+
         logging.debug('compound pairs: {0}'.format(self.compound_pairs))
 
     @staticmethod
@@ -80,6 +83,40 @@ class AlignAndPenalize(object):
         token_d['ner'] = sp[0]
         token_d['pos'] = sp[1]
         token_d['chunk'] = sp[2]
+
+    @staticmethod
+    def get_acronym_pairs(sen1, sen2):
+        acronym_pairs, head_pairs = set(), set()
+        sen1_toks = [word['token'] for word in sen1]
+        sen2_toks = [word['token'] for word in sen2]
+        for src_sen, tgt_sen in ((sen1_toks, sen2_toks),
+                                 (sen2_toks, sen1_toks)):
+            for pair, is_head in AlignAndPenalize._get_acronym_pairs(
+                    src_sen, tgt_sen):
+                acronym_pairs.add(pair)
+                if is_head:
+                    head_pairs.add(pair)
+        return acronym_pairs, head_pairs
+
+    @staticmethod
+    def _get_acronym_pairs(sen1, sen2):
+        candidates = {}
+        for i in range(len(sen2)-1):
+            for j in range(2, 5):
+                if i+j > len(sen2):
+                    continue
+                words = sen2[i:i+j]
+                abbr = "".join(w[0] for w in words)
+                candidates[abbr] = words
+
+        for word1 in sen1:
+            if word1 in candidates:
+                words2 = candidates[word1]
+                for word2 in words2[:-1]:
+                    yield (word2, word1), False
+                    yield (word1, word2), False
+                yield (words2[-1], word1), True
+                yield (words2[-1], word1), True
 
     @staticmethod
     def get_compound_pairs(sen1, sen2):
@@ -169,19 +206,19 @@ class AlignAndPenalize(object):
         if x == y:
             return 1
         if self.is_num_equivalent(x, y):
-            logging.info('equivalent numbers: {0}, {1}'.format(x, y))
+            logging.info(u'equivalent numbers: {0}, {1}'.format(x, y))
             return 1
         if self.is_pronoun_equivalent(x, y):
-            logging.info('equivalent pronouns: {0}, {1}'.format(x, y))
+            logging.info(u'equivalent pronouns: {0}, {1}'.format(x, y))
             return 1
         if self.is_acronym(x, y, x_i, y_i):
-            logging.info('acronym match: {0}, {1}'.format(x, y))
+            logging.info(u'acronym match: {0}, {1}'.format(x, y))
             return 1
         if self.is_headof(x, y, x_i, y_i):
-            logging.info('head_of match: {0}, {1}'.format(x, y))
+            logging.info(u'head_of match: {0}, {1}'.format(x, y))
             return 1
         if self.is_consecutive_match(x, y, x_i, y_i):
-            logging.info('consecutive match: {0}, {1}'.format(x, y))
+            logging.info(u'consecutive match: {0}, {1}'.format(x, y))
             return 1
 
         sim = self.sim_function(x, y, x_i, y_i)
@@ -209,12 +246,10 @@ class AlignAndPenalize(object):
                 y_ == AlignAndPenalize.pronouns[x_])
 
     def is_acronym(self, x, y, x_i, y_i):
-        #TODO
-        return False
+        return (x, y) in self.acronym_pairs
 
     def is_headof(self, x, y, x_i, y_i):
-        #TODO
-        return False
+        return (x, y) in self.head_pairs
 
     def is_consecutive_match(self, x, y, x_i, y_i):
         """We don't distinguish between sen1->sen2 or sen2->sen1, technically
