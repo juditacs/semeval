@@ -665,7 +665,7 @@ class WordnetCache(object):
 
     def get_senses(self, word):
         if not word in self.senses:
-            self.senses[word] = set([word])
+            self.senses[word] = set([word, word.lower()])
             sn = wordnet.synsets(word)
             if len(sn) >= 10:
                 th = len(sn) / 3.0
@@ -795,6 +795,26 @@ def main():
                          'pymachine/tst/definitions_test.cfg'),
             include_longman=True, batch=batch)
         sts_wrapper = STSWrapper(sim_function=machine_wrapper.word_similarity, wn_cache=wn_cache)
+    elif sim_type == 'w2d':
+        fn = argv[2] if len(argv) > 2 else '/mnt/store/home/judit/synonyms/synonyms/jaccard'
+        with open(fn) as f:
+            d = defaultdict(dict)
+            for l in f:
+                fs = l.decode('utf8').strip().split('\t')
+                if not fs[0] == 'en':
+                    continue
+                w1 = fs[1]
+                w2 = fs[3]
+                sim = float(fs[4])
+                d[w1][w2] = sim
+                d[w2][w1] = sim
+        logging.info('Similarities read')
+
+        def sim(word1, word2, pos1, pos2):
+            if word1 in d and word2 in d[word1]:
+                return d[word1][word2]
+            return None
+        sts_wrapper = STSWrapper(sim_function=sim, wn_cache=wn_cache)
     else:
         raise Exception('unknown similarity type: {0}'.format(sim_type))
 
