@@ -20,6 +20,7 @@ from nltk.tag.hunpos import HunposTagger
 from nltk.tokenize import word_tokenize
 
 from pymachine.src.wrapper import Wrapper as MachineWrapper
+from pymachine.src.similarity import WordSimilarity as MachineWordSimilarity
 
 assert MachineWrapper  # silence pyflakes
 
@@ -67,6 +68,9 @@ class AlignAndPenalize(object):
         self.compound_pairs = AlignAndPenalize.get_compound_pairs(self.sen1,
                                                                   self.sen2)
 
+        self.acronym_pairs, self.head_pairs = (
+            AlignAndPenalize.get_acronym_pairs(self.sen1, self.sen2))
+
         logging.debug('compound pairs: {0}'.format(self.compound_pairs))
 
     @staticmethod
@@ -79,6 +83,40 @@ class AlignAndPenalize(object):
         token_d['ner'] = sp[0]
         token_d['pos'] = sp[1]
         token_d['chunk'] = sp[2]
+
+    @staticmethod
+    def get_acronym_pairs(sen1, sen2):
+        acronym_pairs, head_pairs = set(), set()
+        sen1_toks = [word['token'] for word in sen1]
+        sen2_toks = [word['token'] for word in sen2]
+        for src_sen, tgt_sen in ((sen1_toks, sen2_toks),
+                                 (sen2_toks, sen1_toks)):
+            for pair, is_head in AlignAndPenalize._get_acronym_pairs(
+                    src_sen, tgt_sen):
+                acronym_pairs.add(pair)
+                if is_head:
+                    head_pairs.add(pair)
+        return acronym_pairs, head_pairs
+
+    @staticmethod
+    def _get_acronym_pairs(sen1, sen2):
+        candidates = {}
+        for i in range(len(sen2)-1):
+            for j in range(2, 5):
+                if i+j > len(sen2):
+                    continue
+                words = sen2[i:i+j]
+                abbr = "".join(w[0] for w in words)
+                candidates[abbr] = words
+
+        for word1 in sen1:
+            if word1 in candidates:
+                words2 = candidates[word1]
+                for word2 in words2[:-1]:
+                    yield (word2, word1), False
+                    yield (word1, word2), False
+                yield (words2[-1], word1), True
+                yield (words2[-1], word1), True
 
     @staticmethod
     def get_compound_pairs(sen1, sen2):
@@ -168,19 +206,19 @@ class AlignAndPenalize(object):
         if x == y:
             return 1
         if self.is_num_equivalent(x, y):
-            logging.info('equivalent numbers: {0}, {1}'.format(x, y))
+            logging.info(u'equivalent numbers: {0}, {1}'.format(x, y))
             return 1
         if self.is_pronoun_equivalent(x, y):
-            logging.info('equivalent pronouns: {0}, {1}'.format(x, y))
+            logging.info(u'equivalent pronouns: {0}, {1}'.format(x, y))
             return 1
         if self.is_acronym(x, y, x_i, y_i):
-            logging.info('acronym match: {0}, {1}'.format(x, y))
+            logging.info(u'acronym match: {0}, {1}'.format(x, y))
             return 1
         if self.is_headof(x, y, x_i, y_i):
-            logging.info('head_of match: {0}, {1}'.format(x, y))
+            logging.info(u'head_of match: {0}, {1}'.format(x, y))
             return 1
         if self.is_consecutive_match(x, y, x_i, y_i):
-            logging.info('consecutive match: {0}, {1}'.format(x, y))
+            logging.info(u'consecutive match: {0}, {1}'.format(x, y))
             return 1
 
         sim = self.sim_function(x, y, x_i, y_i)
@@ -208,12 +246,10 @@ class AlignAndPenalize(object):
                 y_ == AlignAndPenalize.pronouns[x_])
 
     def is_acronym(self, x, y, x_i, y_i):
-        #TODO
-        return False
+        return (x, y) in self.acronym_pairs
 
     def is_headof(self, x, y, x_i, y_i):
-        #TODO
-        return False
+        return (x, y) in self.head_pairs
 
     def is_consecutive_match(self, x, y, x_i, y_i):
         """We don't distinguish between sen1->sen2 or sen2->sen1, technically
@@ -520,7 +556,9 @@ class LSAWrapper(object):
         d = self.lookup_cache(word1, word2)
         if not d is None:
             return d
-        if self.is_oov(word1) or self.is_oov(word2):
+        oov = filter(self.is_oov, (word1, word2))
+        if oov:
+            #logging.warning(u'OOV: {0}, no lsa similarity'.format(oov))
             return None
         sim = self.lsa_model.similarity(word1, word2)
         if sim < 0.1:
@@ -673,8 +711,10 @@ class WordnetCache(object):
                     for lemma in synset.lemmas():
                         lsn = wordnet.synsets(lemma.name())
                         if len(lsn) <= th:
-                            self.senses[word].add(lemma.name().replace('_', ' '))
-            logging.info('Synonyms for word [{0}]: {1}'.format(word.encode('utf8'), self.senses[word]))
+                            self.senses[word].add(
+                                lemma.name().replace('_', ' '))
+            logging.info('Synonyms for word [{0}]: {1}'.format(
+                word.encode('utf8'), self.senses[word]))
         return self.senses[word]
 
 
@@ -729,15 +769,15 @@ class STSWrapper(object):
 
     def parse_sts_line(self, fields):
         sen1_toks, sen2_toks = map(word_tokenize, fields)
-        try:
-            sen1_pos, sen2_pos = map(
-                lambda t: [tok[1] for tok in self.hunpos_tagger.tag(t)],
-                (sen1_toks, sen2_toks))
-        except UnicodeEncodeError:
-            logging.warning('failed to run POS-tagging: {0}'.format(
-                (sen1_toks, sen2_toks)))
-            sen1_pos = ["UNKNOWN" for tok in sen1_toks]
-            sen2_pos = ["UNKNOWN" for tok in sen2_toks]
+        logging.info('sen1 toks: {}'.format(sen1_toks))
+        logging.info('sen2 toks: {}'.format(sen2_toks))
+        sen1_pos, sen2_pos = map(
+            lambda t: [tok[1] for tok in self.hunpos_tagger.tag(t)],
+            (sen1_toks, sen2_toks))
+        logging.info('sen1 POS: {}'.format(
+            [(word, sen1_pos[i]) for i, word in enumerate(sen1_toks)]))
+        logging.info('sen2 POS: {}'.format(
+            [(word, sen2_pos[i]) for i, word in enumerate(sen2_toks)]))
         return sen1_toks, sen2_toks, sen1_pos, sen2_pos
 
     def read_freqs(self, ifn=__EN_FREQ_PATH__):
@@ -756,7 +796,7 @@ class STSWrapper(object):
              self.global_freqs.get(word, 2) > 500000))
 
     def process_line(self, line):
-        fields = line.decode('utf8').strip().split('\t')
+        fields = line.decode('latin1').strip().split('\t')
         if len(fields) == 7:
             parser = self.parse_twitter_line
             map_tags = AlignAndPenalize.twitter_map_tags
@@ -774,10 +814,29 @@ class STSWrapper(object):
         aligner.get_most_similar_tokens()
         print aligner.sentence_similarity()
 
+class HybridSimWrapper():
+    def __init__(self, lsa_wrapper, machine_sim):
+        self.lsa_wrapper = lsa_wrapper
+        self.machine_sim = machine_sim
+
+    def average_sim(self, x, y, x_i, y_i):
+        machine_sim = self.machine_sim.word_similarity(x, y, x_i, y_i)
+        lsa_sim = self.lsa_wrapper.word_similarity(x, y, x_i, y_i)
+        if machine_sim is None:
+            if lsa_sim is None:
+                sim = None
+            else:
+                sim = lsa_sim
+        elif lsa_sim is None:
+            sim = machine_sim
+        else:
+            sim = (machine_sim + lsa_sim) / 2
+
+        return sim
 
 def main():
-    sim_type = 'lsa'
-    batch = len(argv) == 2 and argv[1] == 'batch'
+    sim_type = argv[1]
+    batch = len(argv) == 3 and argv[2] == 'batch'
     log_level = logging.WARNING if batch else logging.INFO
     logging.basicConfig(
         level=log_level,
@@ -785,16 +844,34 @@ def main():
         "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
 
     wn_cache = WordnetCache()
-    logging.info('Similarity type: {0}'.format(sim_type))
+    logging.warning('Similarity type: {0}'.format(sim_type))
     if sim_type == 'lsa':
         lsa_wrapper = LSAWrapper()
-        sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity, wn_cache=wn_cache)
+        sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity,
+                                 wn_cache=wn_cache)
     elif sim_type == 'machine':
         machine_wrapper = MachineWrapper(
             os.path.join(os.environ['MACHINEPATH'],
                          'pymachine/tst/definitions_test.cfg'),
             include_longman=True, batch=batch)
-        sts_wrapper = STSWrapper(sim_function=machine_wrapper.word_similarity, wn_cache=wn_cache)
+        machine_sim = MachineWordSimilarity(machine_wrapper)
+        sts_wrapper = STSWrapper(sim_function=machine_sim.word_similarity,
+                                 wn_cache=wn_cache)
+
+    elif sim_type == 'hybrid':
+        lsa_wrapper = LSAWrapper()
+        machine_wrapper = MachineWrapper(
+            os.path.join(os.environ['MACHINEPATH'],
+                         'pymachine/tst/definitions_test.cfg'),
+            include_longman=True, batch=batch)
+
+        machine_sim = MachineWordSimilarity(machine_wrapper)
+
+        hybrid_sim = HybridSimWrapper(lsa_wrapper, machine_sim)
+
+        sts_wrapper = STSWrapper(sim_function=hybrid_sim.average_sim,
+                                 wn_cache=wn_cache)
+
     else:
         raise Exception('unknown similarity type: {0}'.format(sim_type))
 
