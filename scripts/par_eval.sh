@@ -15,5 +15,5 @@ do
 done
 
 echo 'all'
-echo "print $total_score/$total_lines.0" | python
+python -c "print $total_score/$total_lines.0"
 
