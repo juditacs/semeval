@@ -27,7 +27,7 @@ __EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/freqs.en'
 
 
 class AlignAndPenalize(object):
-    num_re = re.compile(r'^([0-9.,]+)([mMkK]?)$', re.UNICODE)
+    num_re = re.compile(r'^([0-9][0-9.,]+)([mMkK]?)$', re.UNICODE)
     preferred_pos = ('VB', 'VBD', 'VBG', 'VBN', 'VBP',  # verbs
                      'NN', 'NNS', 'NNP', 'NNPS',   # nouns
                      'PRP', 'PRP$', 'CD')  # pronouns, numbers
