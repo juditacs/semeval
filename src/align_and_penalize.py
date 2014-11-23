@@ -602,7 +602,7 @@ class LSAWrapper(object):
 class SynsetWrapper(object):
 
     punct_re = re.compile(r'[\(\)]', re.UNICODE)
-    nltk_sw = set(nltk_stopwords.words('english'))
+    nltk_sw = set(nltk_stopwords.words('english')) - set(AlignAndPenalize.pronouns.iterkeys())
 
     def __init__(self, synset):
         self.synset = synset
