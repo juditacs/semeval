@@ -764,7 +764,7 @@ class STSWrapper(object):
 
     @staticmethod
     def get_stopwords():
-        nltk_sw = set(nltk_stopwords.words('english'))
+        nltk_sw = set(nltk_stopwords.words('english')) - set(AlignAndPenalize.pronouns.iterkeys())
         return nltk_sw.union(STSWrapper.custom_stopwords)
 
     def parse_twitter_line(self, fd):
