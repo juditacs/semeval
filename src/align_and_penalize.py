@@ -101,11 +101,11 @@ class AlignAndPenalize(object):
     @staticmethod
     def _get_acronym_pairs(sen1, sen2):
         candidates = {}
-        for i in range(len(sen2)-1):
+        for i in range(len(sen2) - 1):
             for j in range(2, 5):
-                if i+j > len(sen2):
+                if i + j > len(sen2):
                     continue
-                words = sen2[i:i+j]
+                words = sen2[i:i + j]
                 abbr = "".join(w[0] for w in words)
                 candidates[abbr] = words
 
@@ -821,7 +821,9 @@ class STSWrapper(object):
         aligner.get_most_similar_tokens()
         print aligner.sentence_similarity()
 
+
 class HybridSimWrapper():
+
     def __init__(self, lsa_wrapper, machine_sim):
         self.lsa_wrapper = lsa_wrapper
         self.machine_sim = machine_sim
@@ -840,6 +842,7 @@ class HybridSimWrapper():
             sim = (machine_sim + lsa_sim) / 2
 
         return sim
+
 
 def main():
     sim_type = argv[1]
