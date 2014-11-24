@@ -28,7 +28,7 @@ __EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/freqs.en'
 
 
 class AlignAndPenalize(object):
-    num_re = re.compile(r'^[0-9.,]+$', re.UNICODE)
+    num_re = re.compile(r'^([0-9][0-9.,]+)([mMkK]?)$', re.UNICODE)
     preferred_pos = ('VB', 'VBD', 'VBG', 'VBN', 'VBP',  # verbs
                      'NN', 'NNS', 'NNP', 'NNPS',   # nouns
                      'PRP', 'PRP$', 'CD')  # pronouns, numbers
@@ -292,7 +292,14 @@ class AlignAndPenalize(object):
         m = AlignAndPenalize.num_re.match(token)
         if not m:
             return False
-        return token.replace(',', '.').rstrip('0')
+        num = float(m.group(1).replace(',', ''))
+        if m.group(2):
+            c = m.group(2).lower()
+            if c == 'k':
+                num *= 1000
+            else:
+                num *= 1000000
+        return num
 
     def sentence_similarity(self):
         s1 = s2 = 0.0
