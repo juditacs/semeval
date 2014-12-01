@@ -1,4 +1,6 @@
 from collections import defaultdict
+import HTMLParser
+import itertools
 import logging
 import math
 import os
@@ -353,7 +355,7 @@ class AlignAndPenalize(object):
         return 1 / math.log(2)
 
     def weight_pos(self, pos):
-        multiplier = 0
+        multiplier = 1
         if pos in AlignAndPenalize.preferred_pos:
             logging.info('preferred pos: {0}'.format(pos))
             return multiplier
@@ -617,6 +619,7 @@ class LSAWrapper(object):
         logging.debug(u'LSA sim + wn boost: {0} -- {1} -- {2}'.format(
             word1, word2, sim).encode('utf8'))
         d = sim if sim <= 1 else 1
+        d = d if d >= 0 else 0
         self.store_cache(word1, word2, d)
         return d
 
@@ -774,6 +777,7 @@ class STSWrapper(object):
         self.frequent_adverbs_cache = {}
         self.punctuation = set(string.punctuation)
         self.hunpos_tagger = STSWrapper.get_hunpos_tagger()
+        self.html_parser = HTMLParser.HTMLParser()
         self.stopwords = STSWrapper.get_stopwords()
         self.hunspell_wrapper = hunspell_wrapper
         self._antonym_cache = {}
@@ -812,10 +816,18 @@ class STSWrapper(object):
         tags2 = fd[6].split(' ')
         return sen1, sen2, tags1, tags2
 
+    def clean_tok(self, word):
+        return "".join((char if char not in self.punctuation else " "
+                       for char in word)).strip().split()
+
+    def tokenize(self, sen):
+        toks = word_tokenize(self.html_parser.unescape(sen))
+        toks = itertools.chain(*[self.clean_tok(word) for word in toks])
+        toks = filter(lambda w: w not in ("", "s"), toks)
+        return toks
+
     def parse_sts_line(self, fields):
-        sen1_toks, sen2_toks = map(word_tokenize, fields)
-        sen1_toks, sen2_toks = map(
-            lambda l: filter(lambda w: w != "'s", l), (sen1_toks, sen2_toks))
+        sen1_toks, sen2_toks = map(self.tokenize, fields)
         logging.info('sen1 toks: {}'.format(sen1_toks))
         logging.info('sen2 toks: {}'.format(sen2_toks))
         sen1_pos, sen2_pos = map(
