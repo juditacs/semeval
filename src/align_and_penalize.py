@@ -347,7 +347,11 @@ class AlignAndPenalize(object):
                 'alignment score > 1: {0} {1}'.format(self.sen1, self.sen2))
         self.penalty()
         logging.info('T={0}, P={1}'.format(self.T, self.P))
-        return self.T - self.P
+        #sim = self.T if self.T >= 0.55 else self.T - self.P
+        #sim = self.T - self.P*(max(0, 0.55-self.T) / 0.55)
+        sim = self.T - self.P
+        sim = sim if sim > 0 else 0
+        return sim
 
     def weight_freq(self, token):
         if token in self.sts_wrapper.global_freqs:
@@ -355,7 +359,7 @@ class AlignAndPenalize(object):
         return 1 / math.log(2)
 
     def weight_pos(self, pos):
-        multiplier = 1
+        multiplier = 0
         if pos in AlignAndPenalize.preferred_pos:
             logging.info('preferred pos: {0}'.format(pos))
             return multiplier
@@ -881,6 +885,12 @@ class HybridSimWrapper():
         self.lsa_wrapper = lsa_wrapper
         self.machine_sim = machine_sim
 
+    def lsa_first_sim(self, x, y, x_i, y_i):
+        lsa_sim = self.lsa_wrapper.word_similarity(x, y, x_i, y_i)
+        if lsa_sim is not None:
+            return lsa_sim
+        return self.machine_sim.word_similarity(x, y, x_i, y_i)
+
     def average_sim(self, x, y, x_i, y_i):
         machine_sim = self.machine_sim.word_similarity(x, y, x_i, y_i)
         lsa_sim = self.lsa_wrapper.word_similarity(x, y, x_i, y_i)
@@ -893,6 +903,7 @@ class HybridSimWrapper():
             sim = machine_sim
         else:
             sim = (machine_sim + lsa_sim) / 2
+            #sim = min(machine_sim, lsa_sim)
 
         return sim
 
@@ -937,7 +948,7 @@ def main():
 
         hybrid_sim = HybridSimWrapper(lsa_wrapper, machine_sim)
 
-        sts_wrapper = STSWrapper(sim_function=hybrid_sim.average_sim,
+        sts_wrapper = STSWrapper(sim_function=hybrid_sim.lsa_first_sim,
                                  wn_cache=wn_cache,
                                  hunspell_wrapper=hunspell_wrapper)
 
