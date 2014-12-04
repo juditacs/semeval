@@ -1,4 +1,6 @@
 from collections import defaultdict
+import HTMLParser
+import itertools
 import logging
 import math
 import os
@@ -7,7 +9,6 @@ import string
 from sys import stderr, stdin, argv
 
 from gensim.models import Word2Vec
-
 
 def log(s):
     stderr.write(s)
@@ -22,13 +23,16 @@ from nltk.tokenize import word_tokenize
 from pymachine.src.wrapper import Wrapper as MachineWrapper
 from pymachine.src.similarity import WordSimilarity as MachineWordSimilarity
 
+from hunspell_wrapper import HunspellWrapper
+
+assert HunspellWrapper  # silence pyflakes
 assert MachineWrapper  # silence pyflakes
 
 __EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/freqs.en'
 
 
 class AlignAndPenalize(object):
-    num_re = re.compile(r'^([0-9][0-9.,]+)([mMkK]?)$', re.UNICODE)
+    num_re = re.compile(r'^([0-9][0-9.,]*)([mMkK]?)$', re.UNICODE)
     preferred_pos = ('VB', 'VBD', 'VBG', 'VBN', 'VBP',  # verbs
                      'NN', 'NNS', 'NNP', 'NNPS',   # nouns
                      'PRP', 'PRP$', 'CD')  # pronouns, numbers
@@ -39,8 +43,12 @@ class AlignAndPenalize(object):
         'we': 'us', 'us': 'we',
         'they': 'them', 'them': 'they'}
 
+    written_numbers = {
+        "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+        "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+
     def __init__(self, sen1, sen2, tags1, tags2, map_tags, wrapper,
-                 sim_function, wn_cache):
+                 sim_function, wn_cache, hunspell_wrapper):
         logging.debug('AlignAndPenalize init:')
         logging.debug('sen1: {0}'.format(sen1))
         logging.debug('sen2: {0}'.format(sen2))
@@ -53,6 +61,7 @@ class AlignAndPenalize(object):
         self.sen2 = []
         self.map_tags = map_tags
         self.wn_cache = wn_cache
+        self.hunspell_wrapper = hunspell_wrapper
         for i, tok1 in enumerate(sen1):
             self.sen1.append({})
             self.sen1[-1]['token'] = tok1
@@ -178,7 +187,7 @@ class AlignAndPenalize(object):
     def sim_xy(self, x, y, x_pos, y_pos):
         max1 = 0.0
         best_pair_1 = None
-        logging.debug(u'got this: {0}, {1}'.format(x, y))
+        #logging.info(u'got this: {0}, {1}'.format(x, y))
         for sx in self.wn_cache.get_senses(x):
             sim = self.similarity_wrapper(sx, y, x_pos, y_pos)
             if sim > max1:
@@ -222,9 +231,29 @@ class AlignAndPenalize(object):
             return 1
 
         sim = self.sim_function(x, y, x_i, y_i)
+
+        if sim is None:
+            sim = self.hunspell_sim(x, y, x_i, y_i)
         if sim is None:
             return self.bigram_sim(x, y)
+
         return sim
+
+    def hunspell_sim(self, x, y, x_i, y_i):
+        if self.hunspell_wrapper is None:
+            return None
+        for suggestion in self.hunspell_wrapper.get_suggestions(x):
+            sim = self.sim_function(suggestion, y, x_i, y_i)
+            if sim is not None:
+                logging.info(
+                    'hunspell correcting {0} to {1}'.format(x, suggestion))
+                return sim
+        for suggestion in self.hunspell_wrapper.get_suggestions(y):
+            sim = self.sim_function(x, suggestion, x_i, y_i)
+            if sim is not None:
+                logging.info(
+                    'hunspell correcting {0} to {1}'.format(y, suggestion))
+                return sim
 
     def lsa_sim(self, x, y, x_i, y_i):
         #TODO
@@ -235,6 +264,8 @@ class AlignAndPenalize(object):
     def is_num_equivalent(self, x, y):
         num_x = self.numerical(x)
         num_y = self.numerical(y)
+        #logging.info("{0} converted to {1}".format(x, num_x))
+        #logging.info("{0} converted to {1}".format(y, num_y))
         if num_x and num_y:
             return num_x == num_y
         return False
@@ -289,6 +320,8 @@ class AlignAndPenalize(object):
                                                   len(bigrams2))
 
     def numerical(self, token):
+        if token in AlignAndPenalize.written_numbers:
+            return AlignAndPenalize.written_numbers[token]
         m = AlignAndPenalize.num_re.match(token)
         if not m:
             return False
@@ -314,7 +347,11 @@ class AlignAndPenalize(object):
                 'alignment score > 1: {0} {1}'.format(self.sen1, self.sen2))
         self.penalty()
         logging.info('T={0}, P={1}'.format(self.T, self.P))
-        return self.T - self.P
+        #sim = self.T if self.T >= 0.55 else self.T - self.P
+        #sim = self.T - self.P*(max(0, 0.55-self.T) / 0.55)
+        sim = self.T - self.P
+        sim = sim if sim > 0 else 0
+        return sim
 
     def weight_freq(self, token):
         if token in self.sts_wrapper.global_freqs:
@@ -322,11 +359,12 @@ class AlignAndPenalize(object):
         return 1 / math.log(2)
 
     def weight_pos(self, pos):
+        multiplier = 0
         if pos in AlignAndPenalize.preferred_pos:
             logging.info('preferred pos: {0}'.format(pos))
-            return 1
+            return multiplier
         logging.info('not preferred pos: {0}'.format(pos))
-        return 0.5
+        return 0.5*multiplier
 
     def is_antonym(self, w1, w2):
         if w1 in self.sts_wrapper.antonym_cache(w2):
@@ -479,6 +517,8 @@ class LSAWrapper(object):
         return False
 
     def is_derivationally_related(self, synsets1, synsets2):
+        return False
+
         lemmas1 = set()
         der1 = set()
         for s1 in synsets1:
@@ -573,16 +613,17 @@ class LSAWrapper(object):
                           'setting it to 0.0: {0} -- {1} -- {2}'.format(
                               word1, word2, sim).encode('utf8'))
             return 0.0
-        logging.info(u'LSA sim without wordnet: {0} -- {1} -- {2}'.format(
+        logging.debug(u'LSA sim without wordnet: {0} -- {1} -- {2}'.format(
             word1, word2, sim).encode('utf8'))
         D = self.wordnet_boost(word1, word2)
         if D is not None:
-            logging.info(u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(
+            logging.debug(u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(
                 word1, word2, D).encode('utf8'))
             sim = sim + 0.5 * math.exp(-self.alpha * D)
-        logging.info(u'LSA sim + wn boost: {0} -- {1} -- {2}'.format(
+        logging.debug(u'LSA sim + wn boost: {0} -- {1} -- {2}'.format(
             word1, word2, sim).encode('utf8'))
         d = sim if sim <= 1 else 1
+        d = d if d >= 0 else 0
         self.store_cache(word1, word2, d)
         return d
 
@@ -602,7 +643,8 @@ class LSAWrapper(object):
 class SynsetWrapper(object):
 
     punct_re = re.compile(r'[\(\)]', re.UNICODE)
-    nltk_sw = set(nltk_stopwords.words('english')) - set(AlignAndPenalize.pronouns.iterkeys())
+    nltk_sw = set(nltk_stopwords.words('english')) - set(
+        AlignAndPenalize.pronouns.iterkeys())
 
     def __init__(self, synset):
         self.synset = synset
@@ -712,7 +754,7 @@ class WordnetCache(object):
         if not word in self.senses:
             self.senses[word] = set([word])
             sn = wordnet.synsets(word)
-            if len(sn) >= 10:
+            if len(sn) >= 100:
                 th = len(sn) / 3.0
                 for synset in sn:
                     for lemma in synset.lemmas():
@@ -730,7 +772,8 @@ class STSWrapper(object):
     custom_stopwords = set([])
     #custom_stopwords = set(["'s"])
 
-    def __init__(self, sim_function='lsa_sim', wn_cache=None):
+    def __init__(self, sim_function='lsa_sim', wn_cache=None,
+                 hunspell_wrapper=None):
         logging.info('reading global frequencies...')
         self.sim_function = sim_function
         self.read_freqs()
@@ -738,7 +781,9 @@ class STSWrapper(object):
         self.frequent_adverbs_cache = {}
         self.punctuation = set(string.punctuation)
         self.hunpos_tagger = STSWrapper.get_hunpos_tagger()
+        self.html_parser = HTMLParser.HTMLParser()
         self.stopwords = STSWrapper.get_stopwords()
+        self.hunspell_wrapper = hunspell_wrapper
         self._antonym_cache = {}
         if wn_cache:
             self.wn_cache = wn_cache
@@ -764,7 +809,8 @@ class STSWrapper(object):
 
     @staticmethod
     def get_stopwords():
-        nltk_sw = set(nltk_stopwords.words('english')) - set(AlignAndPenalize.pronouns.iterkeys())
+        nltk_sw = set(nltk_stopwords.words('english')) - set(
+            AlignAndPenalize.pronouns.iterkeys())
         return nltk_sw.union(STSWrapper.custom_stopwords)
 
     def parse_twitter_line(self, fd):
@@ -774,8 +820,18 @@ class STSWrapper(object):
         tags2 = fd[6].split(' ')
         return sen1, sen2, tags1, tags2
 
+    def clean_tok(self, word):
+        return "".join((char if char not in self.punctuation else " "
+                       for char in word)).strip().split()
+
+    def tokenize(self, sen):
+        toks = word_tokenize(self.html_parser.unescape(sen))
+        toks = itertools.chain(*[self.clean_tok(word) for word in toks])
+        toks = filter(lambda w: w not in ("", "s"), toks)
+        return toks
+
     def parse_sts_line(self, fields):
-        sen1_toks, sen2_toks = map(word_tokenize, fields)
+        sen1_toks, sen2_toks = map(self.tokenize, fields)
         logging.info('sen1 toks: {}'.format(sen1_toks))
         logging.info('sen2 toks: {}'.format(sen2_toks))
         sen1_pos, sen2_pos = map(
@@ -816,7 +872,8 @@ class STSWrapper(object):
         aligner = AlignAndPenalize(sen1, sen2, tags1, tags2, map_tags,
                                    wrapper=self,
                                    sim_function=self.sim_function,
-                                   wn_cache=self.wn_cache)
+                                   wn_cache=self.wn_cache,
+                                   hunspell_wrapper=self.hunspell_wrapper)
         aligner.get_senses()
         aligner.get_most_similar_tokens()
         print aligner.sentence_similarity()
@@ -827,6 +884,12 @@ class HybridSimWrapper():
     def __init__(self, lsa_wrapper, machine_sim):
         self.lsa_wrapper = lsa_wrapper
         self.machine_sim = machine_sim
+
+    def lsa_first_sim(self, x, y, x_i, y_i):
+        lsa_sim = self.lsa_wrapper.word_similarity(x, y, x_i, y_i)
+        if lsa_sim is not None:
+            return lsa_sim
+        return self.machine_sim.word_similarity(x, y, x_i, y_i)
 
     def average_sim(self, x, y, x_i, y_i):
         machine_sim = self.machine_sim.word_similarity(x, y, x_i, y_i)
@@ -840,9 +903,9 @@ class HybridSimWrapper():
             sim = machine_sim
         else:
             sim = (machine_sim + lsa_sim) / 2
+            #sim = min(machine_sim, lsa_sim)
 
         return sim
-
 
 def main():
     sim_type = argv[1]
@@ -854,11 +917,16 @@ def main():
         "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
 
     wn_cache = WordnetCache()
+
+    hunspell_wrapper = None
+    #hunspell_wrapper = HunspellWrapper()
+
     logging.warning('Similarity type: {0}'.format(sim_type))
     if sim_type == 'lsa':
         lsa_wrapper = LSAWrapper()
         sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity,
-                                 wn_cache=wn_cache)
+                                 wn_cache=wn_cache,
+                                 hunspell_wrapper=hunspell_wrapper)
     elif sim_type == 'machine':
         machine_wrapper = MachineWrapper(
             os.path.join(os.environ['MACHINEPATH'],
@@ -866,7 +934,8 @@ def main():
             include_longman=True, batch=batch)
         machine_sim = MachineWordSimilarity(machine_wrapper)
         sts_wrapper = STSWrapper(sim_function=machine_sim.word_similarity,
-                                 wn_cache=wn_cache)
+                                 wn_cache=wn_cache,
+                                 hunspell_wrapper=hunspell_wrapper)
 
     elif sim_type == 'hybrid':
         lsa_wrapper = LSAWrapper()
@@ -879,8 +948,9 @@ def main():
 
         hybrid_sim = HybridSimWrapper(lsa_wrapper, machine_sim)
 
-        sts_wrapper = STSWrapper(sim_function=hybrid_sim.average_sim,
-                                 wn_cache=wn_cache)
+        sts_wrapper = STSWrapper(sim_function=hybrid_sim.lsa_first_sim,
+                                 wn_cache=wn_cache,
+                                 hunspell_wrapper=hunspell_wrapper)
 
     else:
         raise Exception('unknown similarity type: {0}'.format(sim_type))
