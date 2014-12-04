@@ -157,7 +157,7 @@ class AlignAndPenalize(object):
 
     def filter_sen(self, sen):
         return [word for word in sen if (
-            word['token'] not in self.sts_wrapper.punctuation and
+            word['token'] not in STSWrapper.punctuation and
             word['token'].lower() not in self.sts_wrapper.stopwords and
             not self.sts_wrapper.is_frequent_adverb(word['token'],
                                                     word['pos']))]
@@ -771,6 +771,8 @@ class STSWrapper(object):
 
     custom_stopwords = set([])
     #custom_stopwords = set(["'s"])
+    punctuation = set(string.punctuation)
+    punct_regex = re.compile("\W+")
 
     def __init__(self, sim_function='lsa_sim', wn_cache=None,
                  hunspell_wrapper=None):
@@ -779,7 +781,6 @@ class STSWrapper(object):
         self.read_freqs()
         self.sense_cache = {}
         self.frequent_adverbs_cache = {}
-        self.punctuation = set(string.punctuation)
         self.hunpos_tagger = STSWrapper.get_hunpos_tagger()
         self.html_parser = HTMLParser.HTMLParser()
         self.stopwords = STSWrapper.get_stopwords()
@@ -820,13 +821,10 @@ class STSWrapper(object):
         tags2 = fd[6].split(' ')
         return sen1, sen2, tags1, tags2
 
-    def clean_tok(self, word):
-        return "".join((char if char not in self.punctuation else " "
-                       for char in word)).strip().split()
-
     def tokenize(self, sen):
         toks = word_tokenize(self.html_parser.unescape(sen))
-        toks = itertools.chain(*[self.clean_tok(word) for word in toks])
+        toks = itertools.chain(
+            *[STSWrapper.punct_regex.split(word) for word in toks])
         toks = filter(lambda w: w not in ("", "s"), toks)
         return toks
 
