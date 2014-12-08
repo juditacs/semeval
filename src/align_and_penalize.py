@@ -10,6 +10,7 @@ from sys import stderr, stdin, argv
 
 from gensim.models import Word2Vec
 
+
 def log(s):
     stderr.write(s)
     stderr.flush()
@@ -29,6 +30,13 @@ assert HunspellWrapper  # silence pyflakes
 assert MachineWrapper  # silence pyflakes
 
 __EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/freqs.en'
+
+
+global_flags = {
+    'filter_stopwords': True,
+    'penalize_antonyms': False,
+    'penalize_named_entities': False,
+}
 
 
 class AlignAndPenalize(object):
