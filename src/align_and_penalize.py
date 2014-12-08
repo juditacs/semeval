@@ -426,15 +426,13 @@ class AlignAndPenalize(object):
             logging.info('penalty for {0}: wf: {1}, wp: {2}'.format(
                 (token, pos), self.weight_freq(token), self.weight_pos(pos)))
         P2A /= float(2 * len(self.sen2))
-        P1B = 0.0
-        for t, gt, score in B1:
-            P1B += score + 0.5
-        P1B /= float(2 * len(self.sen1))
-        P2B = 0.0
-        for t, gt, score in B2:
-            P2B += score + 0.5
-        P2B /= float(2 * len(self.sen2))
-        self.P = P1A + P2A + P1B + P2B
+        if global_flags['penalize_named_entities']:
+            PC = self.ne_penalty()
+        else:
+            PC = 0
+        logging.info('NE penalty: {0}'.format(PC))
+        PC /= sum([len(self.sen1), len(self.sen2)])
+        self.P = P1A + P2A + P1B + P2B + PC
         logging.info('P1A: {0} P2A: {1} P1B: {2} P2B: {3}'.format(
             P1A, P2A, P1B, P2B))
         if self.P < 0:
@@ -443,6 +441,69 @@ class AlignAndPenalize(object):
                 'P1A: {0} P2A: {1} P1B: {2} P2B: {3}\n'.format(P1A, P2A, P1B,
                                                                P2B) +
                 'sen1: {0}, sen2: {1}'.format(self.sen1, self.sen2))
+
+    def ne_penalty(self):
+        ne1, ne2 = self.collect_entities()
+        if not ne1 and not ne2:
+            return 0
+        logging.info('NE1: {0}, NE2: {1}'.format(ne1, ne2))
+        stat = defaultdict(list)
+        for typ, nes in ne1.iteritems():
+            if not typ in ne2:
+                continue
+            for n1 in nes:
+                if n1 in ne2[typ]:
+                    stat['direct'].append(n1)
+                else:
+                    for w in n1.split(' '):
+                        if w in ne2[typ]:
+                            stat['partial'].append((n1, w))
+                            break
+        for typ, nes in ne2.iteritems():
+            if not typ in ne1:
+                continue
+            for n2 in nes:
+                if n2 in ne1[typ]:
+                    stat['direct'].append(n2)
+                else:
+                    for w in n2.split(' '):
+                        if w in ne1[typ]:
+                            stat['partial'].append((n2, w))
+                            break
+        logging.info('NE stat: {0}'.format(stat))
+        full = sum(len(v) for v in ne1.itervalues()) + sum(len(v) for v in ne2.itervalues())
+        score = 1.0 - sum(len(v) for v in stat.itervalues()) / float(full)
+        return score if score > 0 else 0.0
+
+    def collect_entities(self):
+        current_ne = []
+        typ = ''
+        ne1 = defaultdict(list)
+        ne2 = defaultdict(list)
+        for tok in self.sen1:
+            if tok['ner'].startswith('b'):
+                if current_ne:
+                    ne1[typ].append(' '.join(current_ne))
+                typ = tok['ner'].split('-')[1]
+                current_ne = [tok['token']]
+            elif not tok['ner'] == 'o':
+                typ = tok['ner'].split('-')[1]
+                current_ne.append(tok['token'])
+        if current_ne:
+            ne1[typ].append(' '.join(current_ne))
+        current_ne = []
+        for tok in self.sen2:
+            if tok['ner'].startswith('b'):
+                if current_ne:
+                    ne2[typ].append(' '.join(current_ne))
+                typ = tok['ner'].split('-')[1]
+                current_ne = [tok['token']]
+            elif not tok['ner'] == 'o':
+                typ = tok['ner'].split('-')[1]
+                current_ne.append(tok['token'])
+        if current_ne:
+            ne2[typ].append(' '.join(current_ne))
+        return ne1, ne2
 
 
 def bigram_dist_jaccard(tok1, tok2):
