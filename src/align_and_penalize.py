@@ -372,7 +372,7 @@ class AlignAndPenalize(object):
             logging.info('preferred pos: {0}'.format(pos))
             return multiplier
         logging.info('not preferred pos: {0}'.format(pos))
-        return 0.5*multiplier
+        return 0.5 * multiplier
 
     def is_antonym(self, w1, w2):
         if w1 in self.sts_wrapper.antonym_cache(w2):
@@ -383,16 +383,31 @@ class AlignAndPenalize(object):
             return True
         return False
 
-    def penalty(self):
-        A1 = [t for t in self.sen1 if t['most_sim_score'] < 0.05]
-        A2 = [t for t in self.sen2 if t['most_sim_score'] < 0.05]
-        #logging.debug('A1: {0} words, A2: {1} words'.format(len(A1), len(A2)))
+    def antonym_penalty(self):
         B1 = set([(t['token'], t['most_sim_word'], t['most_sim_score'])
                  for t in self.sen1 if self.is_antonym(t['token'],
                                                        t['most_sim_word'])])
         B2 = set([(t['token'], t['most_sim_word'], t['most_sim_score'])
                  for t in self.sen2 if self.is_antonym(t['token'],
                                                        t['most_sim_word'])])
+        P1B = 0.0
+        for t, gt, score in B1:
+            P1B += score + 0.5
+        P1B /= float(2 * len(self.sen1))
+        P2B = 0.0
+        for t, gt, score in B2:
+            P2B += score + 0.5
+        P2B /= float(2 * len(self.sen2))
+        return P1B, P2B
+
+    def penalty(self):
+        A1 = [t for t in self.sen1 if t['most_sim_score'] < 0.05]
+        A2 = [t for t in self.sen2 if t['most_sim_score'] < 0.05]
+        #logging.debug('A1: {0} words, A2: {1} words'.format(len(A1), len(A2)))
+        if global_flags['penalize_antonyms']:
+            P1B, P2B = self.antonym_penalty()
+        else:
+            P1B = P2B = 0
         P1A = 0.0
         for t in A1:
             score = t['most_sim_score']
