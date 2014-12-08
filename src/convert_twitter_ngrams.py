@@ -19,7 +19,7 @@ def main():
             continue
         cnt = sum(int(i) for i in fd[1:])
         if cnt >= cutoff:
-            for i in xrange(int(math.log(cnt)) + 2):
+            for i in xrange(int(math.log(cnt)) + 1):
                 print(ngram.encode('utf8', 'ignore'))
 
 
