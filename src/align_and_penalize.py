@@ -866,7 +866,10 @@ class STSWrapper(object):
         self.punctuation = set(string.punctuation)
         self.hunpos_tagger = STSWrapper.get_hunpos_tagger()
         self.html_parser = HTMLParser.HTMLParser()
-        self.stopwords = STSWrapper.get_stopwords()
+        if global_flags['filter_stopwords']:
+            self.stopwords = STSWrapper.get_stopwords()
+        else:
+            self.stopwords = set()
         self.hunspell_wrapper = hunspell_wrapper
         self._antonym_cache = {}
         if wn_cache:
