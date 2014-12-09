@@ -529,9 +529,13 @@ def jaccard(s1, s2):
 
 class LSAWrapper(object):
 
-    def __init__(self, vector_fn='vectors_example.bin'):
-        self.lsa_model = Word2Vec.load_word2vec_format(
-            os.path.join(os.environ['LSA_DIR'], vector_fn), binary=True)
+    def __init__(self, vector_fn='vectors_example.bin', word2vec=True):
+        if word2vec:
+            self.lsa_model = Word2Vec.load_word2vec_format(
+                os.path.join(os.environ['LSA_DIR'], vector_fn), binary=True)
+        else:
+            self.lsa_model = Word2Vec.load(
+                os.path.join(os.environ['LSA_DIR'], vector_fn))
         self.alpha = 0.25
         self.cache = {}
         self.wn_cache = WordnetCache()
@@ -1039,6 +1043,11 @@ def main():
                                  wn_cache=wn_cache,
                                  hunspell_wrapper=hunspell_wrapper)
 
+    elif sim_type == 'twitter_embedding':
+        lsa_wrapper = LSAWrapper('gensim_vec', word2vec=False)
+        sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity,
+                                 wn_cache=wn_cache,
+                                 hunspell_wrapper=hunspell_wrapper)
     else:
         raise Exception('unknown similarity type: {0}'.format(sim_type))
 
