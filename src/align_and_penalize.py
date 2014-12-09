@@ -1051,10 +1051,19 @@ def main():
     else:
         raise Exception('unknown similarity type: {0}'.format(sim_type))
 
-    for c, line in enumerate(stdin):
-        sts_wrapper.process_line(line)
-        if c % 100 == 0:
-            logging.warning('{0}...'.format(c))
+    if len(argv) < 3 or not argv[2] == 'shell':
+        for c, line in enumerate(stdin):
+            sts_wrapper.process_line(line)
+            if c % 100 == 0:
+                logging.warning('{0}...'.format(c))
+    else:
+        import readline
+        while(True):
+            line = raw_input()
+            try:
+                sts_wrapper.process_line(line)
+            except:
+                continue
 
 if __name__ == '__main__':
     main()
