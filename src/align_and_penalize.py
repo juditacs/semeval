@@ -15,11 +15,12 @@ def log(s):
     stderr.write(s)
     stderr.flush()
 
+import nltk
+
 from nltk.corpus import wordnet
 
 from nltk.corpus import stopwords as nltk_stopwords
 from nltk.tag.hunpos import HunposTagger
-from nltk.tokenize import word_tokenize
 
 from pymachine.src.wrapper import Wrapper as MachineWrapper
 from pymachine.src.similarity import WordSimilarity as MachineWordSimilarity
@@ -81,6 +82,8 @@ class AlignAndPenalize(object):
 
         self.sen1 = self.filter_sen(self.sen1)
         self.sen2 = self.filter_sen(self.sen2)
+        logging.info('sen1: {}'.format(self.sen1))
+        logging.info('sen2: {}'.format(self.sen2))
 
         self.compound_pairs = AlignAndPenalize.get_compound_pairs(self.sen1,
                                                                   self.sen2)
@@ -91,8 +94,9 @@ class AlignAndPenalize(object):
         logging.debug('compound pairs: {0}'.format(self.compound_pairs))
 
     @staticmethod
-    def sts_map_tags(pos_tag, token_d):
-        token_d['pos'] = pos_tag
+    def sts_map_tags((pos, ner), token_d):
+        token_d['pos'] = pos
+        token_d['ner'] = ner
 
     @staticmethod
     def twitter_map_tags(tags, token_d):
@@ -243,7 +247,7 @@ class AlignAndPenalize(object):
         if sim is None:
             sim = self.hunspell_sim(x, y, x_i, y_i)
         if sim is None:
-            return self.bigram_sim(x, y)
+            return AlignAndPenalize.bigram_sim(x, y)
 
         return sim
 
@@ -267,7 +271,7 @@ class AlignAndPenalize(object):
         #TODO
         if self.is_oov(x) or self.is_oov(y):
             return None
-        return self.bigram_sim(x, y)
+        return AlignAndPenalize.bigram_sim(x, y)
 
     def is_num_equivalent(self, x, y):
         num_x = self.numerical(x)
@@ -319,7 +323,8 @@ class AlignAndPenalize(object):
         #TODO
         return False
 
-    def bigram_sim(self, x, y):
+    @staticmethod
+    def bigram_sim(x, y):
         bigrams1 = set(get_ngrams(x, 2).iterkeys())
         bigrams2 = set(get_ngrams(y, 2).iterkeys())
         if not bigrams1 and not bigrams2:
@@ -433,13 +438,11 @@ class AlignAndPenalize(object):
         logging.info('NE penalty: {0}'.format(PC))
         PC /= sum([len(self.sen1), len(self.sen2)])
         self.P = P1A + P2A + P1B + P2B + PC
-        logging.info('P1A: {0} P2A: {1} P1B: {2} P2B: {3}'.format(
-            P1A, P2A, P1B, P2B))
+        logging.info('P1A: {0} P2A: {1} P1B: {2} P2B: {3}, PC: {4}'.format(
+            P1A, P2A, P1B, P2B, PC))
         if self.P < 0:
             raise Exception(
                 'negative penalty: {0}\n'.format(self.P) +
-                'P1A: {0} P2A: {1} P1B: {2} P2B: {3}\n'.format(P1A, P2A, P1B,
-                                                               P2B) +
                 'sen1: {0}, sen2: {1}'.format(self.sen1, self.sen2))
 
     def ne_penalty(self):
@@ -471,7 +474,8 @@ class AlignAndPenalize(object):
                             stat['partial'].append((n2, w))
                             break
         logging.info('NE stat: {0}'.format(stat))
-        full = sum(len(v) for v in ne1.itervalues()) + sum(len(v) for v in ne2.itervalues())
+        full = (sum(len(v) for v in ne1.itervalues()) +
+                sum(len(v) for v in ne2.itervalues()))
         score = 1.0 - sum(len(v) for v in stat.itervalues()) / float(full)
         return score if score > 0 else 0.0
 
@@ -913,24 +917,34 @@ class STSWrapper(object):
         return sen1, sen2, tags1, tags2
 
     def tokenize(self, sen):
-        toks = word_tokenize(self.html_parser.unescape(sen))
+        toks = nltk.word_tokenize(self.html_parser.unescape(sen))
         toks = itertools.chain(
             *[STSWrapper.punct_regex.split(word) for word in toks])
         toks = filter(lambda w: w not in ("", "s"), toks)
         return toks
 
+    def get_tags_from_ne(self, ne):
+        tags = []
+        for piece in ne:
+            if isinstance(piece, tuple):
+                tok, pos = piece
+                tags.append((pos, 'o'))
+            else:
+                ne_type = piece.label()
+                tags.append((piece[0][1], "b-{0}".format(ne_type)))
+                tags += [(tok[1], "i-{0}".format(ne_type))
+                         for tok in piece[1:]]
+
+        return tags
+
     def parse_sts_line(self, fields):
         sen1_toks, sen2_toks = map(self.tokenize, fields)
-        logging.info('sen1 toks: {}'.format(sen1_toks))
-        logging.info('sen2 toks: {}'.format(sen2_toks))
-        sen1_pos, sen2_pos = map(
-            lambda t: [tok[1] for tok in self.hunpos_tagger.tag(t)],
-            (sen1_toks, sen2_toks))
-        logging.info('sen1 POS: {}'.format(
-            [(word, sen1_pos[i]) for i, word in enumerate(sen1_toks)]))
-        logging.info('sen2 POS: {}'.format(
-            [(word, sen2_pos[i]) for i, word in enumerate(sen2_toks)]))
-        return sen1_toks, sen2_toks, sen1_pos, sen2_pos
+        sen1_pos, sen2_pos = map(nltk.pos_tag, (sen1_toks, sen2_toks))
+        sen1_ne, sen2_ne = map(nltk.ne_chunk, (sen1_pos, sen2_pos))
+        sen1_toks, sen2_toks = map(lambda l: [w.lower() for w in l],
+                                   (sen1_toks, sen2_toks))
+        tags1, tags2 = map(self.get_tags_from_ne, (sen1_ne, sen2_ne))
+        return sen1_toks, sen2_toks, tags1, tags2
 
     def read_freqs(self, ifn=__EN_FREQ_PATH__):
         self.global_freqs = {}
@@ -979,6 +993,12 @@ class HybridSimWrapper():
         if lsa_sim is not None:
             return lsa_sim
         return self.machine_sim.word_similarity(x, y, x_i, y_i)
+
+    def machine_first_sim(self, x, y, x_i, y_i):
+        machine_sim = self.machine_sim.word_similarity(x, y, x_i, y_i)
+        if machine_sim is not None:
+            return machine_sim
+        return self.lsa_wrapper.word_similarity(x, y, x_i, y_i)
 
     def average_sim(self, x, y, x_i, y_i):
         machine_sim = self.machine_sim.word_similarity(x, y, x_i, y_i)
@@ -1037,7 +1057,12 @@ def main():
 
         hybrid_sim = HybridSimWrapper(lsa_wrapper, machine_sim)
 
-        sts_wrapper = STSWrapper(sim_function=hybrid_sim.lsa_first_sim,
+        sts_wrapper = STSWrapper(sim_function=hybrid_sim.machine_first_sim,
+                                 wn_cache=wn_cache,
+                                 hunspell_wrapper=hunspell_wrapper)
+
+    elif sim_type == 'none':
+        sts_wrapper = STSWrapper(sim_function=lambda a, b, c, d: None,
                                  wn_cache=wn_cache,
                                  hunspell_wrapper=hunspell_wrapper)
 
@@ -1056,12 +1081,19 @@ def main():
                 logging.warning('{0}...'.format(c))
     else:
         import readline
+        assert readline  # silence pyflakes
         while(True):
             line = raw_input()
             try:
                 sts_wrapper.process_line(line)
             except:
                 continue
+
+    if sim_type in ('machine', 'hybrid'):
+        o = open('oov.txt', 'w')
+        for word in machine_wrapper.oov:
+            o.write("{0}\n".format(word))
+        o.close()
 
 if __name__ == '__main__':
     main()
