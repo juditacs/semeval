@@ -23,6 +23,7 @@ from nltk.corpus import stopwords as nltk_stopwords
 from nltk.tag.hunpos import HunposTagger
 
 from pymachine.src.wrapper import Wrapper as MachineWrapper
+from pymachine.src.similarity import SentenceSimilarity as MachineSenSimilarity
 from pymachine.src.similarity import WordSimilarity as MachineWordSimilarity
 
 from hunspell_wrapper import HunspellWrapper
@@ -80,8 +81,8 @@ class AlignAndPenalize(object):
             self.sen2[-1]['token'] = tok2
             self.map_tags(tags2[i], self.sen2[-1])
 
-        self.sen1 = self.filter_sen(self.sen1)
-        self.sen2 = self.filter_sen(self.sen2)
+        self.sen1 = self.sts_wrapper.filter_sen(self.sen1)
+        self.sen2 = self.sts_wrapper.filter_sen(self.sen2)
         logging.info('sen1: {}'.format(self.sen1))
         logging.info('sen2: {}'.format(self.sen2))
 
@@ -167,13 +168,6 @@ class AlignAndPenalize(object):
                         yield (src_tok, tgt_tok)
                         yield (tgt_tok, src_tok)
 
-    def filter_sen(self, sen):
-        return [word for word in sen if (
-            word['token'] not in STSWrapper.punctuation and
-            word['token'].lower() not in self.sts_wrapper.stopwords and
-            not self.sts_wrapper.is_frequent_adverb(word['token'],
-                                                    word['pos']))]
-
     def get_senses(self):
         for t in self.sen1 + self.sen2:
             t['senses'] = self.wn_cache.get_senses(t['token'])
@@ -247,7 +241,7 @@ class AlignAndPenalize(object):
         if sim is None:
             sim = self.hunspell_sim(x, y, x_i, y_i)
         if sim is None:
-            return AlignAndPenalize.bigram_sim(x, y)
+            return AlignAndPenalize.bigram_sim(x, y, x_i, y_i)
 
         return sim
 
@@ -271,7 +265,7 @@ class AlignAndPenalize(object):
         #TODO
         if self.is_oov(x) or self.is_oov(y):
             return None
-        return AlignAndPenalize.bigram_sim(x, y)
+        return AlignAndPenalize.bigram_sim(x, y, x_i, y_i)
 
     def is_num_equivalent(self, x, y):
         num_x = self.numerical(x)
@@ -324,7 +318,7 @@ class AlignAndPenalize(object):
         return False
 
     @staticmethod
-    def bigram_sim(x, y):
+    def bigram_sim(x, y, x_i, y_i):
         bigrams1 = set(get_ngrams(x, 2).iterkeys())
         bigrams2 = set(get_ngrams(y, 2).iterkeys())
         if not bigrams1 and not bigrams2:
@@ -923,6 +917,12 @@ class STSWrapper(object):
         toks = filter(lambda w: w not in ("", "s"), toks)
         return toks
 
+    def filter_sen(self, sen):
+        return [word for word in sen if (
+            word['token'] not in STSWrapper.punctuation and
+            word['token'].lower() not in self.stopwords and
+            not self.is_frequent_adverb(word['token'], word['pos']))]
+
     def get_tags_from_ne(self, ne):
         tags = []
         for piece in ne:
@@ -1000,6 +1000,14 @@ class HybridSimWrapper():
             return machine_sim
         return self.lsa_wrapper.word_similarity(x, y, x_i, y_i)
 
+    def max_sim(self, x, y, x_i, y_i):
+        machine_sim = self.machine_sim.word_similarity(x, y, x_i, y_i)
+        lsa_sim = self.lsa_wrapper.word_similarity(x, y, x_i, y_i)
+        bigram_sim = AlignAndPenalize.bigram_sim(x, y, x_i, y_i)
+        max_sim = max((machine_sim, lsa_sim, bigram_sim))
+        logging.info("max sim: {0} vs. {1}: {2}".format(x, y, max_sim))
+        return max_sim
+
     def average_sim(self, x, y, x_i, y_i):
         machine_sim = self.machine_sim.word_similarity(x, y, x_i, y_i)
         lsa_sim = self.lsa_wrapper.word_similarity(x, y, x_i, y_i)
@@ -1016,21 +1024,24 @@ class HybridSimWrapper():
 
         return sim
 
-def main():
-    sim_type = argv[1]
-    batch = len(argv) == 3 and argv[2] == 'batch'
-    log_level = logging.WARNING if batch else logging.INFO
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s : " +
-        "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
+
+def get_processer(sim_type, batch):
+    if sim_type == "machine_only":
+        sts_wrapper = STSWrapper()
+        machine_wrapper = MachineWrapper(
+            os.path.join(os.environ['MACHINEPATH'],
+                         'pymachine/tst/definitions_test.cfg'),
+            include_longman=True, batch=batch)
+        machine_sim = MachineSenSimilarity(machine_wrapper)
+        return lambda l: machine_sim.process_line(
+            l, parser=sts_wrapper.parse_sts_line,
+            sen_filter=sts_wrapper.filter_sen,
+            fallback_sim=AlignAndPenalize.bigram_sim)
 
     wn_cache = WordnetCache()
-
     hunspell_wrapper = None
     #hunspell_wrapper = HunspellWrapper()
 
-    logging.warning('Similarity type: {0}'.format(sim_type))
     if sim_type == 'lsa':
         lsa_wrapper = LSAWrapper()
         sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity,
@@ -1057,7 +1068,12 @@ def main():
 
         hybrid_sim = HybridSimWrapper(lsa_wrapper, machine_sim)
 
-        sts_wrapper = STSWrapper(sim_function=hybrid_sim.machine_first_sim,
+        sts_wrapper = STSWrapper(sim_function=hybrid_sim.max_sim,
+                                 wn_cache=wn_cache,
+                                 hunspell_wrapper=hunspell_wrapper)
+
+    elif sim_type == 'bigram':
+        sts_wrapper = STSWrapper(sim_function=AlignAndPenalize.bigram_sim,
                                  wn_cache=wn_cache,
                                  hunspell_wrapper=hunspell_wrapper)
 
@@ -1074,9 +1090,23 @@ def main():
     else:
         raise Exception('unknown similarity type: {0}'.format(sim_type))
 
+    return sts_wrapper.process_line
+
+def main():
+    sim_type = argv[1]
+    batch = len(argv) == 3 and argv[2] == 'batch'
+    log_level = logging.WARNING if batch else logging.INFO
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s : " +
+        "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
+
+    logging.warning('Similarity type: {0}'.format(sim_type))
+    processer = get_processer(sim_type, batch)
+
     if len(argv) < 3 or not argv[2] == 'shell':
         for c, line in enumerate(stdin):
-            sts_wrapper.process_line(line)
+            processer(line)
             if c % 100 == 0:
                 logging.warning('{0}...'.format(c))
     else:
@@ -1085,15 +1115,9 @@ def main():
         while(True):
             line = raw_input()
             try:
-                sts_wrapper.process_line(line)
+                processer(line)
             except:
                 continue
-
-    if sim_type in ('machine', 'hybrid'):
-        o = open('oov.txt', 'w')
-        for word in machine_wrapper.oov:
-            o.write("{0}\n".format(word))
-        o.close()
 
 if __name__ == '__main__':
     main()
