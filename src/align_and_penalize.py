@@ -39,6 +39,7 @@ global_flags = {
     'filter_stopwords': True,
     'penalize_antonyms': False,
     'penalize_named_entities': False,
+    'wordnet_boost': False,
 }
 
 
@@ -702,13 +703,14 @@ class LSAWrapper(object):
             return 0.0
         logging.debug(u'LSA sim without wordnet: {0} -- {1} -- {2}'.format(
             word1, word2, sim).encode('utf8'))
-        D = self.wordnet_boost(word1, word2)
-        if D is not None:
-            logging.debug(u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(
-                word1, word2, D).encode('utf8'))
-            sim = sim + 0.5 * math.exp(-self.alpha * D)
-        logging.debug(u'LSA sim + wn boost: {0} -- {1} -- {2}'.format(
-            word1, word2, sim).encode('utf8'))
+        if global_flags['wordnet_boost']:
+            D = self.wordnet_boost(word1, word2)
+            if D is not None:
+                logging.debug(u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(
+                    word1, word2, D).encode('utf8'))
+                sim = sim + 0.5 * math.exp(-self.alpha * D)
+            logging.debug(u'LSA sim + wn boost: {0} -- {1} -- {2}'.format(
+                word1, word2, sim).encode('utf8'))
         d = sim if sim <= 1 else 1
         d = d if d >= 0 else 0
         self.store_cache(word1, word2, d)
