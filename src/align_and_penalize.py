@@ -991,6 +991,7 @@ def dummy_map(tags, token_d):
     token_d['chunk'] = ''
     token_d['pos'] = ''
 
+
 def parse_interactive_input(fields):
     sen1 = fields[0].split(' ')
     sen2 = fields[1].split(' ')
@@ -1154,6 +1155,8 @@ def get_processer(args):
 
 
 args = parse_args()
+
+
 def main():
     #sim_type = argv[1]
     #batch = len(argv) == 3 and argv[2] == 'batch'
@@ -1185,8 +1188,8 @@ def main():
                 line2 = line2.lower()
             try:
                 processer(line1 + '\t' + line2)
-            except:
-                raise
+            except Exception as e:
+                logging.exception(e)
                 continue
 
 if __name__ == '__main__':
