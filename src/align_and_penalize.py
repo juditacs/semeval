@@ -37,12 +37,13 @@ __EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/freqs.en'
 
 
 global_flags = {
-    'filter_stopwords': True,
+    'filter_stopwords': False,
     'penalize_antonyms': False,
-    'penalize_named_entities': False,
     'penalize_questions': False,
+    'penalize_named_entities': True,
     'wordnet_boost': True,
     'twitter_norm': True,
+    'ngrams': 3,
     'log_oov_stat': False,
 }
 
@@ -227,7 +228,8 @@ class AlignAndPenalize(object):
         return sim
 
     def baseline_similarity(self, x, y, x_i, y_i):
-        return bigram_dist_jaccard(x, y)
+        n = global_flags['ngram']
+        return ngram_dist_jaccard(x, y, n)
 
     def similarity_wrapper(self, x, y, x_i, y_i):
         if x == y:
@@ -253,7 +255,7 @@ class AlignAndPenalize(object):
         if sim is None:
             sim = self.hunspell_sim(x, y, x_i, y_i)
         if sim is None:
-            return AlignAndPenalize.bigram_sim(x, y, x_i, y_i)
+            return AlignAndPenalize.ngram_sim(x, y, x_i, y_i)
 
         return sim
 
@@ -277,7 +279,7 @@ class AlignAndPenalize(object):
         #TODO
         if self.is_oov(x) or self.is_oov(y):
             return None
-        return AlignAndPenalize.bigram_sim(x, y, x_i, y_i)
+        return AlignAndPenalize.ngram_sim(x, y, x_i, y_i)
 
     def is_num_equivalent(self, x, y):
         num_x = self.numerical(x)
@@ -329,13 +331,14 @@ class AlignAndPenalize(object):
         return False
 
     @staticmethod
-    def bigram_sim(x, y, x_i, y_i):
-        bigrams1 = set(get_ngrams(x, 2).iterkeys())
-        bigrams2 = set(get_ngrams(y, 2).iterkeys())
-        if not bigrams1 and not bigrams2:
+    def ngram_sim(x, y, x_i, y_i):
+        n = global_flags['ngrams']
+        ngrams1 = set(get_ngrams(x, n).iterkeys())
+        ngrams2 = set(get_ngrams(y, n).iterkeys())
+        if not ngrams1 and not ngrams2:
             return 0
-        return float(len(bigrams1 & bigrams2)) / (len(bigrams1) +
-                                                  len(bigrams2))
+        return float(len(ngrams1 & ngrams2)) / (len(ngrams1) +
+                                                len(ngrams2))
 
     def numerical(self, token):
         if token in AlignAndPenalize.written_numbers:
@@ -527,10 +530,10 @@ class AlignAndPenalize(object):
         return ne1, ne2
 
 
-def bigram_dist_jaccard(tok1, tok2):
-    bigrams1 = set(get_ngrams(tok1, 2).iterkeys())
-    bigrams2 = set(get_ngrams(tok2, 2).iterkeys())
-    return jaccard(bigrams1, bigrams2)
+def ngram_dist_jaccard(tok1, tok2, n=2):
+    ngrams1 = set(get_ngrams(tok1, n).iterkeys())
+    ngrams2 = set(get_ngrams(tok2, n).iterkeys())
+    return jaccard(ngrams1, ngrams2)
 
 
 def get_ngrams(text, N):
@@ -1063,8 +1066,8 @@ class HybridSimWrapper():
     def max_sim(self, x, y, x_i, y_i):
         machine_sim = self.machine_sim.word_similarity(x, y, x_i, y_i)
         lsa_sim = self.lsa_wrapper.word_similarity(x, y, x_i, y_i)
-        bigram_sim = AlignAndPenalize.bigram_sim(x, y, x_i, y_i)
-        max_sim = max((machine_sim, lsa_sim, bigram_sim))
+        ngram_sim = AlignAndPenalize.ngram_sim(x, y, x_i, y_i)
+        max_sim = max((machine_sim, lsa_sim, ngram_sim))
         logging.info("max sim: {0} vs. {1}: {2}".format(x, y, max_sim))
         return max_sim
 
@@ -1135,7 +1138,7 @@ def get_processer(args):
         return lambda l: machine_sim.process_line(
             l, parser=sts_wrapper.parse_sts_line,
             sen_filter=sts_wrapper.filter_sen,
-            fallback_sim=AlignAndPenalize.bigram_sim)
+            fallback_sim=AlignAndPenalize.ngram_sim)
 
     wn_cache = WordnetCache()
     hunspell_wrapper = None
@@ -1177,8 +1180,8 @@ def get_processer(args):
                                  wn_cache=wn_cache,
                                  hunspell_wrapper=hunspell_wrapper)
 
-    elif sim_type == 'bigram':
-        sts_wrapper = STSWrapper(sim_function=AlignAndPenalize.bigram_sim,
+    elif sim_type == 'ngram':
+        sts_wrapper = STSWrapper(sim_function=AlignAndPenalize.ngram_sim,
                                  wn_cache=wn_cache,
                                  hunspell_wrapper=hunspell_wrapper)
 
