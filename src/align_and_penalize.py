@@ -964,7 +964,10 @@ class STSWrapper(object):
 
     def process_line(self, line):
         fields = line.decode('latin1').strip().split('\t')
-        if len(fields) == 7:
+        if args.shell:
+            parser = parse_interactive_input
+            map_tags = dummy_map
+        elif len(fields) == 7:
             parser = self.parse_twitter_line
             map_tags = AlignAndPenalize.twitter_map_tags
         elif len(fields) == 2:
@@ -981,6 +984,18 @@ class STSWrapper(object):
         aligner.get_senses()
         aligner.get_most_similar_tokens()
         print aligner.sentence_similarity()
+
+
+def dummy_map(tags, token_d):
+    token_d['ner'] = ''
+    token_d['chunk'] = ''
+    token_d['pos'] = ''
+
+
+def parse_interactive_input(fields):
+    sen1 = fields[0].split(' ')
+    sen2 = fields[1].split(' ')
+    return sen1, sen2, [{}] * len(sen1), [{}] * len(sen2)
 
 
 class HybridSimWrapper():
@@ -1039,7 +1054,28 @@ def parse_args():
                    default=False)
     p.add_argument('--lower', action='store_true', default=False,
                    help='lower all input')
+    p.add_argument('--synonyms', type=str)
     return p.parse_args()
+
+
+def synonym_sim(synonyms, word1, word2):
+    if word1 in synonyms and word2 in synonyms[word1]:
+        logging.info('Synonyms: {0} - {1}'.format(word1, word2))
+        return 1.0
+    return 0.0
+
+
+def read_synonyms(fn):
+    synonyms = defaultdict(set)
+    import gzip
+    with gzip.open(fn) as f:
+        for l in f:
+            fs = l.decode('utf8').strip().split('\t')
+            if not fs[0] == 'en':
+                continue
+            synonyms[fs[1]].add(fs[3])
+            synonyms[fs[3]].add(fs[1])
+    return synonyms
 
 
 def get_processer(args):
@@ -1064,6 +1100,12 @@ def get_processer(args):
     if sim_type == 'lsa':
         lsa_wrapper = LSAWrapper()
         sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity,
+                                 wn_cache=wn_cache,
+                                 hunspell_wrapper=hunspell_wrapper)
+    elif sim_type == 'synonyms':
+        synonyms = read_synonyms(args.synonyms)
+        logging.info('Synonyms read from file: {0}'.format(args.synonyms))
+        sts_wrapper = STSWrapper(sim_function=lambda a, b, c, d: synonym_sim(synonyms, a, b),
                                  wn_cache=wn_cache,
                                  hunspell_wrapper=hunspell_wrapper)
     elif sim_type == 'machine':
@@ -1112,8 +1154,10 @@ def get_processer(args):
     return sts_wrapper.process_line
 
 
+args = parse_args()
+
+
 def main():
-    args = parse_args()
     #sim_type = argv[1]
     #batch = len(argv) == 3 and argv[2] == 'batch'
     log_level = logging.WARNING if args.batch else logging.INFO
@@ -1133,15 +1177,19 @@ def main():
             if c % 100 == 0:
                 logging.warning('{0}...'.format(c))
     else:
+        logging.info('Initialization done')
         import readline
         assert readline  # silence pyflakes
         while(True):
-            line = raw_input()
+            line1 = raw_input()
+            line2 = raw_input()
             if args.lower:
-                line = line.lower()
+                line1 = line1.lower()
+                line2 = line2.lower()
             try:
-                processer(line)
-            except:
+                processer(line1 + '\t' + line2)
+            except Exception as e:
+                logging.exception(e)
                 continue
 
 if __name__ == '__main__':
