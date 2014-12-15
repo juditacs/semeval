@@ -39,7 +39,8 @@ global_flags = {
     'filter_stopwords': True,
     'penalize_antonyms': False,
     'penalize_named_entities': False,
-    'wordnet_boost': False,
+    'penalize_questions': False,
+    'wordnet_boost': True,
 }
 
 
@@ -56,6 +57,10 @@ class AlignAndPenalize(object):
         'us': 'we', 'our': 'we',
         'them': 'they', 'their': 'they',
     }
+
+    question_starters = set([
+        'is', 'does', 'do', 'what', 'where', 'how', 'why',
+    ])
 
     written_numbers = {
         "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
@@ -432,15 +437,27 @@ class AlignAndPenalize(object):
             PC = self.ne_penalty()
         else:
             PC = 0
+        if global_flags['penalize_questions']:
+            PD = self.question_penalty()
+            PD /= (len(self.sen1) + len(self.sen2))
+        else:
+            PD = 0
         logging.info('NE penalty: {0}'.format(PC))
         PC /= sum([len(self.sen1), len(self.sen2)])
-        self.P = P1A + P2A + P1B + P2B + PC
+        self.P = P1A + P2A + P1B + P2B + PC + PD
         logging.info('P1A: {0} P2A: {1} P1B: {2} P2B: {3}, PC: {4}'.format(
             P1A, P2A, P1B, P2B, PC))
         if self.P < 0:
             raise Exception(
                 'negative penalty: {0}\n'.format(self.P) +
                 'sen1: {0}, sen2: {1}'.format(self.sen1, self.sen2))
+
+    def question_penalty(self):
+        isq1 = self.sen1[0]['token'].lower() in AlignAndPenalize.question_starters
+        isq2 = self.sen2[0]['token'].lower() in AlignAndPenalize.question_starters
+        if isq1 == isq2:
+            return 0
+        return 1
 
     def ne_penalty(self):
         ne1, ne2 = self.collect_entities()
