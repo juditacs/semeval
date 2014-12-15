@@ -49,11 +49,13 @@ class AlignAndPenalize(object):
                      'NN', 'NNS', 'NNP', 'NNPS',   # nouns
                      'PRP', 'PRP$', 'CD')  # pronouns, numbers
     pronouns = {
-        'i': 'me', 'me': 'i',
-        'he': 'him', 'him': 'he',
-        'she': 'her', 'her': 'she',
-        'we': 'us', 'us': 'we',
-        'they': 'them', 'them': 'they'}
+        'me': 'i', 'my': 'i',
+        'your': 'you',
+        'him': 'he', 'his': 'he',
+        'her': 'she',
+        'us': 'we', 'our': 'we',
+        'them': 'they', 'their': 'they',
+    }
 
     written_numbers = {
         "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
@@ -279,10 +281,9 @@ class AlignAndPenalize(object):
         return False
 
     def is_pronoun_equivalent(self, x, y):
-        x_ = x.lower()
-        y_ = y.lower()
-        return (x_ in AlignAndPenalize.pronouns and
-                y_ == AlignAndPenalize.pronouns[x_])
+        x_ = AlignAndPenalize.pronouns.get(x.lower(), x.lower())
+        y_ = AlignAndPenalize.pronouns.get(y.lower(), y.lower())
+        return x_ == y_
 
     def is_acronym(self, x, y, x_i, y_i):
         return (x, y) in self.acronym_pairs
