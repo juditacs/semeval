@@ -9,6 +9,7 @@ import re
 import string
 from sys import stderr, stdin
 
+from utils import twitter_candidates
 from gensim.models import Word2Vec
 
 
@@ -41,6 +42,8 @@ global_flags = {
     'penalize_named_entities': False,
     'penalize_questions': False,
     'wordnet_boost': True,
+    'twitter_norm': True,
+    'log_oov_stat': False,
 }
 
 
@@ -699,21 +702,42 @@ class LSAWrapper(object):
         return False
 
     def is_oov(self, word):
+        if len(self.spell_candidates(word)) == 0:
+            return True
+        return False
+
+    def spell_candidates(self, word):
         try:
             self.lsa_model[word]
-            return False
+            oov_stat['non_oov'].add(word)
+            return [word]
         except KeyError:
-            return True
+            if global_flags['twitter_norm']:
+                cand = twitter_candidates(word, self.lsa_model, oov_stat)
+                if cand:
+                    return cand
+            oov_stat['oov'].add(word)
+            return []
 
     def word_similarity(self, word1, word2, pos1, pos2):
         d = self.lookup_cache(word1, word2)
         if not d is None:
             return d
-        oov = filter(self.is_oov, (word1, word2))
-        if oov:
-            #logging.warning(u'OOV: {0}, no lsa similarity'.format(oov))
+        cand1 = self.spell_candidates(word1)
+        if len(cand1) == 0:
             return None
-        sim = self.lsa_model.similarity(word1, word2)
+        cand2 = self.spell_candidates(word2)
+        if len(cand2) == 0:
+            return None
+        max_sim = -1
+        max_pair = (word1, word2)
+        for c1 in cand1:
+            for c2 in cand2:
+                sim = self.lsa_model.similarity(c1, c2)
+                if sim > max_sim:
+                    max_sim = sim
+                    #max_pair = (c1, c2)
+        sim = max_sim
         if sim < 0.1:
             logging.debug(u'LSA sim too low (less than 0.1), ' +
                           'setting it to 0.0: {0} -- {1} -- {2}'.format(
@@ -722,7 +746,7 @@ class LSAWrapper(object):
         logging.debug(u'LSA sim without wordnet: {0} -- {1} -- {2}'.format(
             word1, word2, sim).encode('utf8'))
         if global_flags['wordnet_boost']:
-            D = self.wordnet_boost(word1, word2)
+            D = self.wordnet_boost(max_pair[0], max_pair[1])
             if D is not None:
                 logging.debug(u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(
                     word1, word2, D).encode('utf8'))
@@ -1213,6 +1237,11 @@ def main():
                 continue
 
 if __name__ == '__main__':
+    oov_stat = defaultdict(set)
     main()
+    if global_flags['log_oov_stat']:
+        for k, v in oov_stat.iteritems():
+            with open('log/tmp/' + k, 'w') as f:
+                f.write('\n'.join(sorted(v)).encode('utf8'))
     #import cProfile
     #cProfile.run('main()', 'stats_new.cprofile')
