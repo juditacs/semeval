@@ -1,4 +1,5 @@
 from collections import defaultdict
+from argparse import ArgumentParser
 import HTMLParser
 import itertools
 import logging
@@ -6,7 +7,7 @@ import math
 import os
 import re
 import string
-from sys import stderr, stdin, argv
+from sys import stderr, stdin
 
 from gensim.models import Word2Vec
 
@@ -1025,7 +1026,25 @@ class HybridSimWrapper():
         return sim
 
 
-def get_processer(sim_type, batch):
+def parse_args():
+    p = ArgumentParser()
+    p.add_argument('--sim-type', help='similarity type', type=str)
+    p.add_argument('--shell', help='interactive shell',
+                   action='store_true', default=False)
+    p.add_argument('--vectors', help='vectors file or prefix', type=str,
+                   default='gensim_vec')
+    p.add_argument('--word2vec', help='word2vec or gensim vectors', action='store_true',
+                   default=False)
+    p.add_argument('--batch', help='use batch processing', action='store_true',
+                   default=False)
+    p.add_argument('--lower', action='store_true', default=False,
+                   help='lower all input')
+    return p.parse_args()
+
+
+def get_processer(args):
+    sim_type = args.sim_type
+    batch = args.batch
     if sim_type == "machine_only":
         sts_wrapper = STSWrapper()
         machine_wrapper = MachineWrapper(
@@ -1083,7 +1102,7 @@ def get_processer(sim_type, batch):
                                  hunspell_wrapper=hunspell_wrapper)
 
     elif sim_type == 'twitter_embedding':
-        lsa_wrapper = LSAWrapper('gensim_vec', word2vec=False)
+        lsa_wrapper = LSAWrapper(args.vectors, word2vec=False)
         sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity,
                                  wn_cache=wn_cache,
                                  hunspell_wrapper=hunspell_wrapper)
@@ -1092,20 +1111,24 @@ def get_processer(sim_type, batch):
 
     return sts_wrapper.process_line
 
+
 def main():
-    sim_type = argv[1]
-    batch = len(argv) == 3 and argv[2] == 'batch'
-    log_level = logging.WARNING if batch else logging.INFO
+    args = parse_args()
+    #sim_type = argv[1]
+    #batch = len(argv) == 3 and argv[2] == 'batch'
+    log_level = logging.WARNING if args.batch else logging.INFO
     logging.basicConfig(
         level=log_level,
         format="%(asctime)s : " +
         "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
 
-    logging.warning('Similarity type: {0}'.format(sim_type))
-    processer = get_processer(sim_type, batch)
+    logging.warning('Similarity type: {0}'.format(args.sim_type))
+    processer = get_processer(args)
 
-    if len(argv) < 3 or not argv[2] == 'shell':
+    if not args.shell:
         for c, line in enumerate(stdin):
+            if args.lower:
+                line = line.lower()
             processer(line)
             if c % 100 == 0:
                 logging.warning('{0}...'.format(c))
@@ -1114,6 +1137,8 @@ def main():
         assert readline  # silence pyflakes
         while(True):
             line = raw_input()
+            if args.lower:
+                line = line.lower()
             try:
                 processer(line)
             except:
