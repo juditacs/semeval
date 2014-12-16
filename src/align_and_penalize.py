@@ -8,6 +8,7 @@ import re
 import string
 from sys import stderr, stdin
 
+from utils import twitter_candidates
 from gensim.models import Word2Vec
 
 
@@ -35,9 +36,14 @@ __EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/umbc_webbase.unigr
 
 
 global_flags = {
-    'filter_stopwords': True,
+    'filter_stopwords': False,
     'penalize_antonyms': False,
-    'penalize_named_entities': False,
+    'penalize_questions': False,
+    'penalize_named_entities': True,
+    'wordnet_boost': True,
+    'twitter_norm': True,
+    'ngrams': 3,
+    'log_oov_stat': False,
 }
 
 
@@ -47,11 +53,17 @@ class AlignAndPenalize(object):
                      'NN', 'NNS', 'NNP', 'NNPS',   # nouns
                      'PRP', 'PRP$', 'CD')  # pronouns, numbers
     pronouns = {
-        'i': 'me', 'me': 'i',
-        'he': 'him', 'him': 'he',
-        'she': 'her', 'her': 'she',
-        'we': 'us', 'us': 'we',
-        'they': 'them', 'them': 'they'}
+        'me': 'i', 'my': 'i',
+        'your': 'you',
+        'him': 'he', 'his': 'he',
+        'her': 'she',
+        'us': 'we', 'our': 'we',
+        'them': 'they', 'their': 'they',
+    }
+
+    question_starters = set([
+        'is', 'does', 'do', 'what', 'where', 'how', 'why',
+    ])
 
     written_numbers = {
         "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
@@ -217,7 +229,8 @@ class AlignAndPenalize(object):
         return sim
 
     def baseline_similarity(self, x, y, x_i, y_i):
-        return bigram_dist_jaccard(x, y)
+        n = global_flags['ngram']
+        return ngram_dist_jaccard(x, y, n)
 
     def similarity_wrapper(self, x, y, x_i, y_i):
         if x == y:
@@ -243,7 +256,7 @@ class AlignAndPenalize(object):
         if sim is None:
             sim = self.hunspell_sim(x, y, x_i, y_i)
         if sim is None:
-            return AlignAndPenalize.bigram_sim(x, y, x_i, y_i)
+            return AlignAndPenalize.ngram_sim(x, y, x_i, y_i)
 
         return sim
 
@@ -267,7 +280,7 @@ class AlignAndPenalize(object):
         #TODO
         if self.is_oov(x) or self.is_oov(y):
             return None
-        return AlignAndPenalize.bigram_sim(x, y, x_i, y_i)
+        return AlignAndPenalize.ngram_sim(x, y, x_i, y_i)
 
     def is_num_equivalent(self, x, y):
         num_x = self.numerical(x)
@@ -279,10 +292,9 @@ class AlignAndPenalize(object):
         return False
 
     def is_pronoun_equivalent(self, x, y):
-        x_ = x.lower()
-        y_ = y.lower()
-        return (x_ in AlignAndPenalize.pronouns and
-                y_ == AlignAndPenalize.pronouns[x_])
+        x_ = AlignAndPenalize.pronouns.get(x.lower(), x.lower())
+        y_ = AlignAndPenalize.pronouns.get(y.lower(), y.lower())
+        return x_ == y_
 
     def is_acronym(self, x, y, x_i, y_i):
         return (x, y) in self.acronym_pairs
@@ -320,13 +332,14 @@ class AlignAndPenalize(object):
         return False
 
     @staticmethod
-    def bigram_sim(x, y, x_i, y_i):
-        bigrams1 = set(get_ngrams(x, 2).iterkeys())
-        bigrams2 = set(get_ngrams(y, 2).iterkeys())
-        if not bigrams1 and not bigrams2:
+    def ngram_sim(x, y, x_i, y_i):
+        n = global_flags['ngrams']
+        ngrams1 = set(get_ngrams(x, n).iterkeys())
+        ngrams2 = set(get_ngrams(y, n).iterkeys())
+        if not ngrams1 and not ngrams2:
             return 0
-        return float(len(bigrams1 & bigrams2)) / (len(bigrams1) +
-                                                  len(bigrams2))
+        return float(len(ngrams1 & ngrams2)) / (len(ngrams1) +
+                                                len(ngrams2))
 
     def numerical(self, token):
         if token in AlignAndPenalize.written_numbers:
@@ -431,15 +444,27 @@ class AlignAndPenalize(object):
             PC = self.ne_penalty()
         else:
             PC = 0
+        if global_flags['penalize_questions']:
+            PD = self.question_penalty()
+            PD /= (len(self.sen1) + len(self.sen2))
+        else:
+            PD = 0
         logging.info('NE penalty: {0}'.format(PC))
         PC /= sum([len(self.sen1), len(self.sen2)])
-        self.P = P1A + P2A + P1B + P2B + PC
+        self.P = P1A + P2A + P1B + P2B + PC + PD
         logging.info('P1A: {0} P2A: {1} P1B: {2} P2B: {3}, PC: {4}'.format(
             P1A, P2A, P1B, P2B, PC))
         if self.P < 0:
             raise Exception(
                 'negative penalty: {0}\n'.format(self.P) +
                 'sen1: {0}, sen2: {1}'.format(self.sen1, self.sen2))
+
+    def question_penalty(self):
+        isq1 = self.sen1[0]['token'].lower() in AlignAndPenalize.question_starters
+        isq2 = self.sen2[0]['token'].lower() in AlignAndPenalize.question_starters
+        if isq1 == isq2:
+            return 0
+        return 1
 
     def ne_penalty(self):
         ne1, ne2 = self.collect_entities()
@@ -506,10 +531,10 @@ class AlignAndPenalize(object):
         return ne1, ne2
 
 
-def bigram_dist_jaccard(tok1, tok2):
-    bigrams1 = set(get_ngrams(tok1, 2).iterkeys())
-    bigrams2 = set(get_ngrams(tok2, 2).iterkeys())
-    return jaccard(bigrams1, bigrams2)
+def ngram_dist_jaccard(tok1, tok2, n=2):
+    ngrams1 = set(get_ngrams(tok1, n).iterkeys())
+    ngrams2 = set(get_ngrams(tok2, n).iterkeys())
+    return jaccard(ngrams1, ngrams2)
 
 
 def get_ngrams(text, N):
@@ -681,21 +706,42 @@ class LSAWrapper(object):
         return False
 
     def is_oov(self, word):
+        if len(self.spell_candidates(word)) == 0:
+            return True
+        return False
+
+    def spell_candidates(self, word):
         try:
             self.lsa_model[word]
-            return False
+            oov_stat['non_oov'].add(word)
+            return [word]
         except KeyError:
-            return True
+            if global_flags['twitter_norm']:
+                cand = twitter_candidates(word, self.lsa_model, oov_stat)
+                if cand:
+                    return cand
+            oov_stat['oov'].add(word)
+            return []
 
     def word_similarity(self, word1, word2, pos1, pos2):
         d = self.lookup_cache(word1, word2)
         if not d is None:
             return d
-        oov = filter(self.is_oov, (word1, word2))
-        if oov:
-            #logging.warning(u'OOV: {0}, no lsa similarity'.format(oov))
+        cand1 = self.spell_candidates(word1)
+        if len(cand1) == 0:
             return None
-        sim = self.lsa_model.similarity(word1, word2)
+        cand2 = self.spell_candidates(word2)
+        if len(cand2) == 0:
+            return None
+        max_sim = -1
+        max_pair = (word1, word2)
+        for c1 in cand1:
+            for c2 in cand2:
+                sim = self.lsa_model.similarity(c1, c2)
+                if sim > max_sim:
+                    max_sim = sim
+                    #max_pair = (c1, c2)
+        sim = max_sim
         if sim < 0.1:
             logging.debug(u'LSA sim too low (less than 0.1), ' +
                           'setting it to 0.0: {0} -- {1} -- {2}'.format(
@@ -703,13 +749,14 @@ class LSAWrapper(object):
             return 0.0
         logging.debug(u'LSA sim without wordnet: {0} -- {1} -- {2}'.format(
             word1, word2, sim).encode('utf8'))
-        D = self.wordnet_boost(word1, word2)
-        if D is not None:
-            logging.debug(u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(
-                word1, word2, D).encode('utf8'))
-            sim = sim + 0.5 * math.exp(-self.alpha * D)
-        logging.debug(u'LSA sim + wn boost: {0} -- {1} -- {2}'.format(
-            word1, word2, sim).encode('utf8'))
+        if global_flags['wordnet_boost']:
+            D = self.wordnet_boost(max_pair[0], max_pair[1])
+            if D is not None:
+                logging.debug(u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(
+                    word1, word2, D).encode('utf8'))
+                sim = sim + 0.5 * math.exp(-self.alpha * D)
+            logging.debug(u'LSA sim + wn boost: {0} -- {1} -- {2}'.format(
+                word1, word2, sim).encode('utf8'))
         d = sim if sim <= 1 else 1
         d = d if d >= 0 else 0
         self.store_cache(word1, word2, d)
@@ -1050,8 +1097,8 @@ class HybridSimWrapper():
     def max_sim(self, x, y, x_i, y_i):
         machine_sim = self.machine_sim.word_similarity(x, y, x_i, y_i)
         lsa_sim = self.lsa_wrapper.word_similarity(x, y, x_i, y_i)
-        bigram_sim = AlignAndPenalize.bigram_sim(x, y, x_i, y_i)
-        max_sim = max((machine_sim, lsa_sim, bigram_sim))
+        ngram_sim = AlignAndPenalize.ngram_sim(x, y, x_i, y_i)
+        max_sim = max((machine_sim, lsa_sim, ngram_sim))
         logging.info("max sim: {0} vs. {1}: {2}".format(x, y, max_sim))
         return max_sim
 
@@ -1122,7 +1169,7 @@ def get_processer(args):
         return lambda l: machine_sim.process_line(
             l, parser=sts_wrapper.parse_sts_line,
             sen_filter=sts_wrapper.filter_sen,
-            fallback_sim=AlignAndPenalize.bigram_sim)
+            fallback_sim=AlignAndPenalize.ngram_sim)
 
     wn_cache = WordnetCache()
     hunspell_wrapper = None
@@ -1165,8 +1212,8 @@ def get_processer(args):
                                  wn_cache=wn_cache,
                                  hunspell_wrapper=hunspell_wrapper)
 
-    elif sim_type == 'bigram':
-        sts_wrapper = STSWrapper(sim_function=AlignAndPenalize.bigram_sim,
+    elif sim_type == 'ngram':
+        sts_wrapper = STSWrapper(sim_function=AlignAndPenalize.ngram_sim,
                                  wn_cache=wn_cache,
                                  hunspell_wrapper=hunspell_wrapper)
 
@@ -1225,6 +1272,11 @@ def main():
                 continue
 
 if __name__ == '__main__':
+    oov_stat = defaultdict(set)
     main()
+    if global_flags['log_oov_stat']:
+        for k, v in oov_stat.iteritems():
+            with open('log/tmp/' + k, 'w') as f:
+                f.write('\n'.join(sorted(v)).encode('utf8'))
     #import cProfile
     #cProfile.run('main()', 'stats_new.cprofile')
