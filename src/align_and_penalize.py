@@ -34,15 +34,29 @@ assert MachineWrapper  # silence pyflakes
 
 __EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/umbc_webbase.unigram_freq'  # nopep8
 
+def dice(s1, s2):
+    try:
+        return (2*float(len(s1 & s2))) / (len(s1) + len(s2))
+    except ZeroDivisionError:
+        return 0.0
+
+def jaccard(s1, s2):
+    try:
+        return float(len(s1 & s2)) / len(s1 | s2)
+    except ZeroDivisionError:
+        return 0.0
+
 
 global_flags = {
-    'filter_stopwords': False,
+    'filter_stopwords': True,
     'penalize_antonyms': False,
     'penalize_questions': False,
-    'penalize_named_entities': True,
+    'penalize_named_entities': False,
     'wordnet_boost': True,
     'twitter_norm': True,
-    'ngrams': 3,
+    'ngrams': 4,
+    'ngram_padding': False,
+    'ngram_sim': dice,
     'log_oov_stat': False,
 }
 
@@ -338,8 +352,8 @@ class AlignAndPenalize(object):
         ngrams2 = set(get_ngrams(y, n).iterkeys())
         if not ngrams1 and not ngrams2:
             return 0
-        return float(len(ngrams1 & ngrams2)) / (len(ngrams1) +
-                                                len(ngrams2))
+        sim_metric = global_flags['ngram_sim']
+        return sim_metric(ngrams1, ngrams2)
 
     def numerical(self, token):
         if token in AlignAndPenalize.written_numbers:
@@ -460,8 +474,10 @@ class AlignAndPenalize(object):
                 'sen1: {0}, sen2: {1}'.format(self.sen1, self.sen2))
 
     def question_penalty(self):
-        isq1 = self.sen1[0]['token'].lower() in AlignAndPenalize.question_starters
-        isq2 = self.sen2[0]['token'].lower() in AlignAndPenalize.question_starters
+        isq1 = (self.sen1[0]['token'].lower() in
+                AlignAndPenalize.question_starters)
+        isq2 = (self.sen2[0]['token'].lower() in
+                AlignAndPenalize.question_starters)
         if isq1 == isq2:
             return 0
         return 1
@@ -539,17 +555,15 @@ def ngram_dist_jaccard(tok1, tok2, n=2):
 
 def get_ngrams(text, N):
     ngrams = defaultdict(int)
+    if global_flags['ngram_padding']:
+        padding = '@'
+        #padding = '@'*(N-2)
+        text = "{0}{1}{2}".format(padding, text, padding)
     for i in xrange(len(text) - N + 1):
         ngram = text[i:i + N]
         ngrams[ngram] += 1
+    logging.info('ngrams: {0} -> {1}'.format(text, ngrams))
     return ngrams
-
-
-def jaccard(s1, s2):
-    try:
-        return float(len(s1 & s2)) / len(s1 | s2)
-    except ZeroDivisionError:
-        return 0.0
 
 
 class LSAWrapper(object):
@@ -752,8 +766,9 @@ class LSAWrapper(object):
         if global_flags['wordnet_boost']:
             D = self.wordnet_boost(max_pair[0], max_pair[1])
             if D is not None:
-                logging.debug(u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(
-                    word1, word2, D).encode('utf8'))
+                logging.debug(
+                    u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(
+                        word1, word2, D).encode('utf8'))
                 sim = sim + 0.5 * math.exp(-self.alpha * D)
             logging.debug(u'LSA sim + wn boost: {0} -- {1} -- {2}'.format(
                 word1, word2, sim).encode('utf8'))
