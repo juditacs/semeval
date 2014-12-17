@@ -1,7 +1,6 @@
 from collections import defaultdict
 from argparse import ArgumentParser
 import HTMLParser
-import itertools
 import logging
 import math
 import os
@@ -33,17 +32,31 @@ from hunspell_wrapper import HunspellWrapper
 assert HunspellWrapper  # silence pyflakes
 assert MachineWrapper  # silence pyflakes
 
-__EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/freqs.en'
+__EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/umbc_webbase.unigram_freq'  # nopep8
+
+def dice(s1, s2):
+    try:
+        return (2*float(len(s1 & s2))) / (len(s1) + len(s2))
+    except ZeroDivisionError:
+        return 0.0
+
+def jaccard(s1, s2):
+    try:
+        return float(len(s1 & s2)) / len(s1 | s2)
+    except ZeroDivisionError:
+        return 0.0
 
 
 global_flags = {
-    'filter_stopwords': False,
+    'filter_stopwords': True,
     'penalize_antonyms': False,
     'penalize_questions': False,
-    'penalize_named_entities': True,
+    'penalize_named_entities': False,
     'wordnet_boost': True,
     'twitter_norm': True,
-    'ngrams': 3,
+    'ngrams': 4,
+    'ngram_padding': False,
+    'ngram_sim': dice,
     'log_oov_stat': False,
 }
 
@@ -94,6 +107,8 @@ class AlignAndPenalize(object):
             self.sen2[-1]['token'] = tok2
             self.map_tags(tags2[i], self.sen2[-1])
 
+        logging.info('sen1 unfiltered: {}'.format(self.sen1))
+        logging.info('sen2 unfiltered: {}'.format(self.sen2))
         self.sen1 = self.sts_wrapper.filter_sen(self.sen1)
         self.sen2 = self.sts_wrapper.filter_sen(self.sen2)
         logging.info('sen1: {}'.format(self.sen1))
@@ -337,8 +352,8 @@ class AlignAndPenalize(object):
         ngrams2 = set(get_ngrams(y, n).iterkeys())
         if not ngrams1 and not ngrams2:
             return 0
-        return float(len(ngrams1 & ngrams2)) / (len(ngrams1) +
-                                                len(ngrams2))
+        sim_metric = global_flags['ngram_sim']
+        return sim_metric(ngrams1, ngrams2)
 
     def numerical(self, token):
         if token in AlignAndPenalize.written_numbers:
@@ -459,8 +474,10 @@ class AlignAndPenalize(object):
                 'sen1: {0}, sen2: {1}'.format(self.sen1, self.sen2))
 
     def question_penalty(self):
-        isq1 = self.sen1[0]['token'].lower() in AlignAndPenalize.question_starters
-        isq2 = self.sen2[0]['token'].lower() in AlignAndPenalize.question_starters
+        isq1 = (self.sen1[0]['token'].lower() in
+                AlignAndPenalize.question_starters)
+        isq2 = (self.sen2[0]['token'].lower() in
+                AlignAndPenalize.question_starters)
         if isq1 == isq2:
             return 0
         return 1
@@ -538,17 +555,15 @@ def ngram_dist_jaccard(tok1, tok2, n=2):
 
 def get_ngrams(text, N):
     ngrams = defaultdict(int)
+    if global_flags['ngram_padding']:
+        padding = '@'
+        #padding = '@'*(N-2)
+        text = "{0}{1}{2}".format(padding, text, padding)
     for i in xrange(len(text) - N + 1):
         ngram = text[i:i + N]
         ngrams[ngram] += 1
+    logging.info('ngrams: {0} -> {1}'.format(text, ngrams))
     return ngrams
-
-
-def jaccard(s1, s2):
-    try:
-        return float(len(s1 & s2)) / len(s1 | s2)
-    except ZeroDivisionError:
-        return 0.0
 
 
 class LSAWrapper(object):
@@ -751,8 +766,9 @@ class LSAWrapper(object):
         if global_flags['wordnet_boost']:
             D = self.wordnet_boost(max_pair[0], max_pair[1])
             if D is not None:
-                logging.debug(u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(
-                    word1, word2, D).encode('utf8'))
+                logging.debug(
+                    u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(
+                        word1, word2, D).encode('utf8'))
                 sim = sim + 0.5 * math.exp(-self.alpha * D)
             logging.debug(u'LSA sim + wn boost: {0} -- {1} -- {2}'.format(
                 word1, word2, sim).encode('utf8'))
@@ -960,16 +976,35 @@ class STSWrapper(object):
 
     def tokenize(self, sen):
         toks = nltk.word_tokenize(self.html_parser.unescape(sen))
-        toks = itertools.chain(
-            *[STSWrapper.punct_regex.split(word) for word in toks])
-        toks = filter(lambda w: w not in ("", "s"), toks)
-        return toks
+        new_toks = []
+        for tok in toks:
+            if tok in STSWrapper.punctuation:
+                new_toks.append(tok)
+            else:
+                new_toks += STSWrapper.punct_regex.split(tok)
+
+        return filter(lambda w: w not in ("", "s"), new_toks)
+
+    def nva_filter(self, sen):
+        for cat_filter in (("N", "V", "J", "C", "R"),):
+        #for cat_filter in (("N", "V"),):
+        #for cat_filter in (("N", "V"), ("N", "V", "J")):
+            filtered = [word for word in sen if word['pos'][0] in cat_filter]
+            if len(filtered) > 0:
+                return filtered
+        else:
+            return sen
 
     def filter_sen(self, sen):
-        return [word for word in sen if (
+        #nva_filtered = self.nva_filter(sen)
+        nva_filtered = sen
+        filtered = [word for word in nva_filtered if (
             word['token'] not in STSWrapper.punctuation and
             word['token'].lower() not in self.stopwords and
             not self.is_frequent_adverb(word['token'], word['pos']))]
+        if filtered:
+            return filtered
+        return nva_filtered
 
     def get_tags_from_ne(self, ne):
         tags = []
@@ -987,7 +1022,10 @@ class STSWrapper(object):
 
     def parse_sts_line(self, fields):
         sen1_toks, sen2_toks = map(self.tokenize, fields)
-        sen1_pos, sen2_pos = map(nltk.pos_tag, (sen1_toks, sen2_toks))
+        logging.info("tokenized: {0}".format((sen1_toks, sen2_toks)))
+        sen1_pos, sen2_pos = map(self.hunpos_tagger.tag,
+                                 (sen1_toks, sen2_toks))
+        logging.info("pos-tagged: {0}".format((sen1_pos, sen2_pos)))
         sen1_ne, sen2_ne = map(nltk.ne_chunk, (sen1_pos, sen2_pos))
         sen1_toks, sen2_toks = map(lambda l: [w.lower() for w in l],
                                    (sen1_toks, sen2_toks))
@@ -998,16 +1036,24 @@ class STSWrapper(object):
         self.global_freqs = {}
         with open(ifn) as f:
             for l in f:
-                fd = l.decode('utf8').strip().split(' ')
-                word = fd[0]
-                logfreq = math.log(int(fd[1]) + 2)
-                #we add 2 so that inverse logfreq makes sense for 0 and 1
+                try:
+                    fd = l.decode('utf8').strip().split(' ')
+                    word = fd[1]
+                except:
+                    logging.warning(
+                        "error reading line in freq data: {0}".format(repr(l)))
+                    continue
+                logfreq = math.log(int(fd[0]) + 2)
+                #we add 2 so we can calculate inverse logfreq for OOVs
                 self.global_freqs[word] = logfreq
 
     def is_frequent_adverb(self, word, pos):
-        return self.frequent_adverbs_cache.setdefault(
+        answer = self.frequent_adverbs_cache.setdefault(
             (pos is not None and pos[:2] == 'RB' and
              self.global_freqs.get(word, 2) > 500000))
+        if answer:
+            logging.warning("discarding frequent adverb: {0}".format(word))
+        return answer
 
     def process_line(self, line):
         fields = line.decode('latin1').strip().split('\t')
@@ -1095,8 +1141,8 @@ def parse_args():
                    action='store_true', default=False)
     p.add_argument('--vectors', help='vectors file or prefix', type=str,
                    default='gensim_vec')
-    p.add_argument('--word2vec', help='word2vec or gensim vectors', action='store_true',
-                   default=False)
+    p.add_argument('--word2vec', help='word2vec or gensim vectors',
+                   action='store_true', default=False)
     p.add_argument('--batch', help='use batch processing', action='store_true',
                    default=False)
     p.add_argument('--lower', action='store_true', default=False,
@@ -1152,9 +1198,10 @@ def get_processer(args):
     elif sim_type == 'synonyms':
         synonyms = read_synonyms(args.synonyms)
         logging.info('Synonyms read from file: {0}'.format(args.synonyms))
-        sts_wrapper = STSWrapper(sim_function=lambda a, b, c, d: synonym_sim(synonyms, a, b),
-                                 wn_cache=wn_cache,
-                                 hunspell_wrapper=hunspell_wrapper)
+        sts_wrapper = STSWrapper(
+            sim_function=lambda a, b, c, d: synonym_sim(synonyms, a, b),
+            wn_cache=wn_cache, hunspell_wrapper=hunspell_wrapper)
+
     elif sim_type == 'machine':
         machine_wrapper = MachineWrapper(
             os.path.join(os.environ['MACHINEPATH'],
