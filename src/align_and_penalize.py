@@ -465,39 +465,39 @@ class AlignAndPenalize(object):
             return 0
         return 1
 
+    def find_ne_in_other(self, ne1, ne2):
+        match = set()
+        missing = set()
+        for typ, nes in ne1.iteritems():
+            if not typ in ne2:
+                missing |= set(nes)
+                continue
+            for ne in nes:
+                if ne in ne2[typ]:
+                    match.add(ne)
+                    continue
+                words = ne.split(' ')
+                for i in range(1, len(words) - 1):
+                    p1 = ' '.join(words[:i])
+                    p2 = ' '.join(words[i:])
+                    if p1 in ne2[typ] or p2 in ne2[typ]:
+                        match.add(ne)
+                        continue
+                missing.add(ne)
+        return match, missing
+
     def ne_penalty(self):
         ne1, ne2 = self.collect_entities()
         if not ne1 and not ne2:
             return 0
         logging.info('NE1: {0}, NE2: {1}'.format(ne1, ne2))
-        stat = defaultdict(list)
-        for typ, nes in ne1.iteritems():
-            if not typ in ne2:
-                continue
-            for n1 in nes:
-                if n1 in ne2[typ]:
-                    stat['direct'].append(n1)
-                else:
-                    for w in n1.split(' '):
-                        if w in ne2[typ]:
-                            stat['partial'].append((n1, w))
-                            break
-        for typ, nes in ne2.iteritems():
-            if not typ in ne1:
-                continue
-            for n2 in nes:
-                if n2 in ne1[typ]:
-                    stat['direct'].append(n2)
-                else:
-                    for w in n2.split(' '):
-                        if w in ne1[typ]:
-                            stat['partial'].append((n2, w))
-                            break
-        logging.info('NE stat: {0}'.format(stat))
-        full = (sum(len(v) for v in ne1.itervalues()) +
-                sum(len(v) for v in ne2.itervalues()))
-        score = 1.0 - sum(len(v) for v in stat.itervalues()) / float(full)
-        return score if score > 0 else 0.0
+        match1, missing1 = self.find_ne_in_other(ne1, ne2)
+        match2, missing2 = self.find_ne_in_other(ne2, ne1)
+        if not match1 and not match2:
+            return 1.0
+        diff1 = float(len(match1 - match2)) / len(match1 | match2)
+        diff2 = float(len(match2 - match1)) / len(match1 | match2)
+        return 1 - max([diff1, diff2])
 
     def collect_entities(self):
         current_ne = []
