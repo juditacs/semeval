@@ -1,5 +1,10 @@
 def twitter_candidates(word, dictionary, stat):
-    candidates = set(norvig_spellchecker(word, dictionary))
+    hashtag = '#' + word
+    candidates = set()
+    if hashtag in dictionary:
+        stat['hashtag'].add(word)
+        candidates.add(hashtag)
+    candidates |= set(norvig_spellchecker(word, dictionary))
     if candidates:
         stat['norvig'].add(u'{0}\t{1}'.format(word, '\t'.join(candidates)))
     nodup = trim_dup_letters(word)
