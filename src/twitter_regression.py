@@ -24,7 +24,7 @@ def train_regression(feats, gold):
     return w[0]
 
 
-def train_maxent(feats, gold):
+def train_svm(feats, gold):
     labeled = []
     clf = svm.SVC()
     clf.fit(feats, gold)
@@ -37,7 +37,7 @@ def train_maxent(feats, gold):
     return SklearnClassifier(Pipeline()).train(labeled, max_iter=30)
 
 
-def predict_maxent(model, feats):
+def predict_svm(model, feats):
     return model.predict(feats)
     pred = []
     for f in feats:
@@ -92,9 +92,9 @@ def main():
     else:
         fn = 'data/filt/labels_dev_binary'
     dev_gold = read_gold(fn)
-    #model = train_maxent(train_feats, train_gold)
+    #model = train_svm(train_feats, train_gold)
     model = train_regression(train_feats, train_gold)
-    #prediction = predict_maxent(model, dev_feats)
+    #prediction = predict_svm(model, dev_feats)
     prediction = predict_regression(model, dev_feats)
     th = 0.25
     with open('predicted', 'w') as f:
@@ -107,8 +107,9 @@ def main():
                 if p < 0:
                     p = 0
                 f.write('false\t{0:1.4f}\n'.format(round(p, 4)))
-        #f.write('\n'.join(map(str, prediction)) + '\n')
-    #print_stats(prediction, dev_gold)
+        f.write('\n'.join(map(str, prediction)) + '\n')
+    if dev_gold:
+        print_stats(prediction, dev_gold)
 
 if __name__ == '__main__':
     main()
