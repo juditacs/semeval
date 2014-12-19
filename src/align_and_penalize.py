@@ -33,12 +33,16 @@ assert HunspellWrapper  # silence pyflakes
 assert MachineWrapper  # silence pyflakes
 
 __EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/umbc_webbase.unigram_freq'  # nopep8
+feats = []
+global_freqs = {}
+
 
 def dice(s1, s2):
     try:
-        return (2*float(len(s1 & s2))) / (len(s1) + len(s2))
+        return (2 * float(len(s1 & s2))) / (len(s1) + len(s2))
     except ZeroDivisionError:
         return 0.0
+
 
 def jaccard(s1, s2):
     try:
@@ -48,16 +52,17 @@ def jaccard(s1, s2):
 
 
 global_flags = {
-    'filter_stopwords': True,
-    'penalize_antonyms': False,
-    'penalize_questions': False,
-    'penalize_named_entities': False,
+    'filter_stopwords': False,
+    'penalize_antonyms': True,
+    'penalize_questions': True,
+    'penalize_named_entities': True,
     'wordnet_boost': True,
     'twitter_norm': True,
     'ngrams': 4,
     'ngram_padding': False,
     'ngram_sim': dice,
     'log_oov_stat': False,
+    'verb_tense_penalty': True,
 }
 
 
@@ -85,9 +90,9 @@ class AlignAndPenalize(object):
 
     def __init__(self, sen1, sen2, tags1, tags2, map_tags, wrapper,
                  sim_function, wn_cache, hunspell_wrapper):
-        logging.debug('AlignAndPenalize init:')
-        logging.debug('sen1: {0}'.format(sen1))
-        logging.debug('sen2: {0}'.format(sen2))
+        #logging.debug('AlignAndPenalize init:')
+        #logging.debug('sen1: {0}'.format(sen1))
+        #logging.debug('sen2: {0}'.format(sen2))
         self.sts_wrapper = wrapper
         if isinstance(sim_function, str):
             self.sim_function = getattr(self, sim_function)
@@ -107,12 +112,12 @@ class AlignAndPenalize(object):
             self.sen2[-1]['token'] = tok2
             self.map_tags(tags2[i], self.sen2[-1])
 
-        logging.info('sen1 unfiltered: {}'.format(self.sen1))
-        logging.info('sen2 unfiltered: {}'.format(self.sen2))
+        #logging.info('sen1 unfiltered: {}'.format(self.sen1))
+        #logging.info('sen2 unfiltered: {}'.format(self.sen2))
         self.sen1 = self.sts_wrapper.filter_sen(self.sen1)
         self.sen2 = self.sts_wrapper.filter_sen(self.sen2)
-        logging.info('sen1: {}'.format(self.sen1))
-        logging.info('sen2: {}'.format(self.sen2))
+        #logging.info('sen1: {}'.format(self.sen1))
+        #logging.info('sen2: {}'.format(self.sen2))
 
         self.compound_pairs = AlignAndPenalize.get_compound_pairs(self.sen1,
                                                                   self.sen2)
@@ -120,7 +125,7 @@ class AlignAndPenalize(object):
         self.acronym_pairs, self.head_pairs = (
             AlignAndPenalize.get_acronym_pairs(self.sen1, self.sen2))
 
-        logging.debug('compound pairs: {0}'.format(self.compound_pairs))
+        #logging.debug('compound pairs: {0}'.format(self.compound_pairs))
 
     @staticmethod
     def sts_map_tags((pos, ner), token_d):
@@ -207,16 +212,16 @@ class AlignAndPenalize(object):
                 for y_i, y in enumerate(self.sen2)))
             x['most_sim_word'] = most_sim
             x['most_sim_score'] = score
-            logging.info(u'{0}. {1} -> {2} ({3})'.format(
-                x_i, x['token'], most_sim, score))
+            #logging.info(u'{0}. {1} -> {2} ({3})'.format(
+                #x_i, x['token'], most_sim, score))
         for y_i, y in enumerate(self.sen2):
             score, most_sim = max((
                 (self.sim_xy(y['token'], x['token'], x_i, y_i), x['token'])
                 for x_i, x in enumerate(self.sen1)))
             y['most_sim_word'] = most_sim
             y['most_sim_score'] = score
-            logging.info(u'{0}. {1} -> {2} ({3})'.format(
-                y_i, y['token'], most_sim, score))
+            #logging.info(u'{0}. {1} -> {2} ({3})'.format(
+                #y_i, y['token'], most_sim, score))
 
     def sim_xy(self, x, y, x_pos, y_pos):
         max1 = 0.0
@@ -250,19 +255,19 @@ class AlignAndPenalize(object):
         if x == y:
             return 1
         if self.is_num_equivalent(x, y):
-            logging.info(u'equivalent numbers: {0}, {1}'.format(x, y))
+            #logging.info(u'equivalent numbers: {0}, {1}'.format(x, y))
             return 1
         if self.is_pronoun_equivalent(x, y):
-            logging.info(u'equivalent pronouns: {0}, {1}'.format(x, y))
+            #logging.info(u'equivalent pronouns: {0}, {1}'.format(x, y))
             return 1
         if self.is_acronym(x, y, x_i, y_i):
-            logging.info(u'acronym match: {0}, {1}'.format(x, y))
+            #logging.info(u'acronym match: {0}, {1}'.format(x, y))
             return 1
         if self.is_headof(x, y, x_i, y_i):
-            logging.info(u'head_of match: {0}, {1}'.format(x, y))
+            #logging.info(u'head_of match: {0}, {1}'.format(x, y))
             return 1
         if self.is_consecutive_match(x, y, x_i, y_i):
-            logging.info(u'consecutive match: {0}, {1}'.format(x, y))
+            #logging.info(u'consecutive match: {0}, {1}'.format(x, y))
             return 1
 
         sim = self.sim_function(x, y, x_i, y_i)
@@ -280,14 +285,14 @@ class AlignAndPenalize(object):
         for suggestion in self.hunspell_wrapper.get_suggestions(x):
             sim = self.sim_function(suggestion, y, x_i, y_i)
             if sim is not None:
-                logging.info(
-                    'hunspell correcting {0} to {1}'.format(x, suggestion))
+                #logging.info(
+                    #'hunspell correcting {0} to {1}'.format(x, suggestion))
                 return sim
         for suggestion in self.hunspell_wrapper.get_suggestions(y):
             sim = self.sim_function(x, suggestion, x_i, y_i)
             if sim is not None:
-                logging.info(
-                    'hunspell correcting {0} to {1}'.format(y, suggestion))
+                #logging.info(
+                    #'hunspell correcting {0} to {1}'.format(y, suggestion))
                 return sim
 
     def lsa_sim(self, x, y, x_i, y_i):
@@ -382,7 +387,12 @@ class AlignAndPenalize(object):
             raise Exception(
                 'alignment score > 1: {0} {1}'.format(self.sen1, self.sen2))
         self.penalty()
-        logging.info('T={0}, P={1}'.format(self.T, self.P))
+        #out = [len(self.sen1), len(self.sen2)]
+        out = []
+        for k, v in sorted(self.pen_feats.items()):
+            out.append(v)
+        feats.append(out)
+        #logging.info('T={0}, P={1}'.format(self.T, self.P))
         #sim = self.T if self.T >= 0.55 else self.T - self.P
         #sim = self.T - self.P*(max(0, 0.55-self.T) / 0.55)
         sim = self.T - self.P
@@ -390,24 +400,24 @@ class AlignAndPenalize(object):
         return sim
 
     def weight_freq(self, token):
-        if token in self.sts_wrapper.global_freqs:
-            return 1 / self.sts_wrapper.global_freqs[token]
+        if token in global_freqs:
+            return 1 / global_freqs[token]
         return 1 / math.log(2)
 
     def weight_pos(self, pos):
         multiplier = 0
-        if pos in AlignAndPenalize.preferred_pos:
-            logging.info('preferred pos: {0}'.format(pos))
+        if pos.upper() in AlignAndPenalize.preferred_pos:
+            #logging.info('preferred pos: {0}'.format(pos))
             return multiplier
-        logging.info('not preferred pos: {0}'.format(pos))
+        #logging.info('not preferred pos: {0}'.format(pos))
         return 0.5 * multiplier
 
     def is_antonym(self, w1, w2):
         if w1 in self.sts_wrapper.antonym_cache(w2):
-            logging.info('Antonym found: {0} -- {1}'.format(w1, w2))
+            #logging.info('Antonym found: {0} -- {1}'.format(w1, w2))
             return True
         if w2 in self.sts_wrapper.antonym_cache(w1):
-            logging.info('Antonym found: {0} -- {1}'.format(w2, w1))
+            #logging.info('Antonym found: {0} -- {1}'.format(w2, w1))
             return True
         return False
 
@@ -429,11 +439,14 @@ class AlignAndPenalize(object):
         return P1B, P2B
 
     def penalty(self):
+        self.pen_feats = {}
         A1 = [t for t in self.sen1 if t['most_sim_score'] < 0.05]
         A2 = [t for t in self.sen2 if t['most_sim_score'] < 0.05]
         #logging.debug('A1: {0} words, A2: {1} words'.format(len(A1), len(A2)))
         if global_flags['penalize_antonyms']:
             P1B, P2B = self.antonym_penalty()
+            self.pen_feats['P1B'] = P1B
+            self.pen_feats['P2B'] = P2B
         else:
             P1B = P2B = 0
         P1A = 0.0
@@ -442,8 +455,9 @@ class AlignAndPenalize(object):
             pos = t['pos']
             token = t['token']
             P1A += score + self.weight_freq(token) * self.weight_pos(pos)
-            logging.info('penalty for {0}: wf: {1}, wp: {2}'.format(
-                (token, pos), self.weight_freq(token), self.weight_pos(pos)))
+            #logging.info('penalty for {0}: wf: {1}, wp: {2}'.format(
+                #(token, pos), self.weight_freq(token), self.weight_pos(pos)))
+        self.pen_feats['P1A'] = P1A
         P1A /= float(2 * len(self.sen1))
         P2A = 0.0
         for t in A2:
@@ -451,27 +465,50 @@ class AlignAndPenalize(object):
             pos = t['pos']
             token = t['token']
             P2A += score + self.weight_freq(token) * self.weight_pos(pos)
-            logging.info('penalty for {0}: wf: {1}, wp: {2}'.format(
-                (token, pos), self.weight_freq(token), self.weight_pos(pos)))
+            #logging.info('penalty for {0}: wf: {1}, wp: {2}'.format(
+                #(token, pos), self.weight_freq(token), self.weight_pos(pos)))
+        self.pen_feats['P2A'] = P2A
         P2A /= float(2 * len(self.sen2))
         if global_flags['penalize_named_entities']:
             PC = self.ne_penalty()
+            self.pen_feats['PC'] = PC
         else:
             PC = 0
         if global_flags['penalize_questions']:
             PD = self.question_penalty()
+            self.pen_feats['PD'] = PD
             PD /= (len(self.sen1) + len(self.sen2))
         else:
             PD = 0
-        logging.info('NE penalty: {0}'.format(PC))
+        if global_flags['verb_tense_penalty']:
+            PE = self.verb_tense_penalty()
+            self.pen_feats['PE'] = PE
+        else:
+            PE = 0
+        #logging.info('NE penalty: {0}'.format(PC))
         PC /= sum([len(self.sen1), len(self.sen2)])
-        self.P = P1A + P2A + P1B + P2B + PC + PD
-        logging.info('P1A: {0} P2A: {1} P1B: {2} P2B: {3}, PC: {4}'.format(
-            P1A, P2A, P1B, P2B, PC))
+        self.P = P1A + P2A + P1B + P2B + PC + PD + PE
+        #logging.info('P1A: {0} P2A: {1} P1B: {2} P2B: {3}, PC: {4}'.format(
+            #P1A, P2A, P1B, P2B, PC))
         if self.P < 0:
             raise Exception(
                 'negative penalty: {0}\n'.format(self.P) +
                 'sen1: {0}, sen2: {1}'.format(self.sen1, self.sen2))
+
+    def verb_tense_penalty(self):
+        past = set(['vbd', 'vbn'])
+        is_past1 = False
+        for tok in self.sen1:
+            if tok['pos'].lower() in past:
+                is_past1 = True
+        is_past2 = False
+        for tok in self.sen2:
+            if tok['pos'].lower() in past:
+                is_past2 = True
+        if is_past1 == is_past2:
+            return 0
+        #logging.info('Different verb tense found')
+        return 1
 
     def question_penalty(self):
         isq1 = (self.sen1[0]['token'].lower() in
@@ -505,11 +542,21 @@ class AlignAndPenalize(object):
 
     def ne_penalty(self):
         ne1, ne2 = self.collect_entities()
+        self.pen_feats['match1'] = 0
+        self.pen_feats['match2'] = 0
+        self.pen_feats['missing1'] = 0
+        self.pen_feats['missing2'] = 0
+        self.pen_feats['ne1'] = sum(len(v) for v in ne1.values())
+        self.pen_feats['ne2'] = sum(len(v) for v in ne2.values())
         if not ne1 and not ne2:
             return 0
-        logging.info('NE1: {0}, NE2: {1}'.format(ne1, ne2))
+        #logging.info('NE1: {0}, NE2: {1}'.format(ne1, ne2))
         match1, missing1 = self.find_ne_in_other(ne1, ne2)
         match2, missing2 = self.find_ne_in_other(ne2, ne1)
+        self.pen_feats['match1'] = len(match1)
+        self.pen_feats['match2'] = len(match2)
+        self.pen_feats['missing1'] = len(missing1)
+        self.pen_feats['missing2'] = len(missing2)
         if not match1 and not match2:
             return 1.0
         diff1 = float(len(match1 - match2)) / len(match1 | match2)
@@ -562,7 +609,7 @@ def get_ngrams(text, N):
     for i in xrange(len(text) - N + 1):
         ngram = text[i:i + N]
         ngrams[ngram] += 1
-    logging.info('ngrams: {0} -> {1}'.format(text, ngrams))
+    #logging.info('ngrams: {0} -> {1}'.format(text, ngrams))
     return ngrams
 
 
@@ -586,8 +633,8 @@ class LSAWrapper(object):
             # the two words appear together in the same synset
             return 0
         if self.is_direct_hypernym(sigsets1, sigsets2):
-            logging.info('Direct hypernym: {0} -- {1} -- score: 1'.format(
-                word1.encode('utf8'), word2.encode('utf8')))
+            #logging.info('Direct hypernym: {0} -- {1} -- score: 1'.format(
+                #word1.encode('utf8'), word2.encode('utf8')))
             return 1
         if self.is_two_link_indirect_hypernym(sigsets1, sigsets2):
             return 2
@@ -595,15 +642,15 @@ class LSAWrapper(object):
         adj2 = set(filter(lambda x: x.pos() == 'a', sigsets1))
         if adj1 and adj2:
             if self.is_direct_similar_to(adj1, adj2):
-                logging.info(
-                    'Direct similar to: {0} -- {1} -- score: 1'.format(
-                        word1.encode('utf8'), word2.encode('utf8')))
+                #logging.info(
+                    #'Direct similar to: {0} -- {1} -- score: 1'.format(
+                        #word1.encode('utf8'), word2.encode('utf8')))
                 return 1
             if self.is_two_link_indirect_similar_to(adj1, adj2):
                 return 2
         if self.is_derivationally_related(sigsets1, sigsets2):
-            logging.info('Derivationally rel: {0} -- {1} -- score: 1'.format(
-                word1.encode('utf8'), word2.encode('utf8')))
+            #logging.info('Derivationally rel: {0} -- {1} -- score: 1'.format(
+                #word1.encode('utf8'), word2.encode('utf8')))
             return 1
         """
         TODO
@@ -618,12 +665,12 @@ class LSAWrapper(object):
 
     def in_hypopernym_glosses(self, word1, word2, synsets1, synsets2):
         if self.in_glosses(word1, synsets2):
-            logging.info(u'Word [{0}] in glosses of word [{1}]'.format(
-                word1, word2).encode('utf8'))
+            #logging.info(u'Word [{0}] in glosses of word [{1}]'.format(
+                #word1, word2).encode('utf8'))
             return True
         if self.in_glosses(word2, synsets1):
-            logging.info(u'Word [{0}] in glosses of word [{1}]'.format(
-                word2, word1).encode('utf8'))
+            #logging.info(u'Word [{0}] in glosses of word [{1}]'.format(
+                #word2, word1).encode('utf8'))
             return True
 
     def in_glosses(self, word, synsets):
@@ -757,21 +804,21 @@ class LSAWrapper(object):
                     #max_pair = (c1, c2)
         sim = max_sim
         if sim < 0.1:
-            logging.debug(u'LSA sim too low (less than 0.1), ' +
-                          'setting it to 0.0: {0} -- {1} -- {2}'.format(
-                              word1, word2, sim).encode('utf8'))
+            #logging.debug(u'LSA sim too low (less than 0.1), ' +
+                          #'setting it to 0.0: {0} -- {1} -- {2}'.format(
+                              #word1, word2, sim).encode('utf8'))
             return 0.0
-        logging.debug(u'LSA sim without wordnet: {0} -- {1} -- {2}'.format(
-            word1, word2, sim).encode('utf8'))
+        #logging.debug(u'LSA sim without wordnet: {0} -- {1} -- {2}'.format(
+            #word1, word2, sim).encode('utf8'))
         if global_flags['wordnet_boost']:
             D = self.wordnet_boost(max_pair[0], max_pair[1])
             if D is not None:
-                logging.debug(
-                    u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(
-                        word1, word2, D).encode('utf8'))
+                #logging.debug(
+                    #u'LSA sim wordnet boost: {0} -- {1} -- {2}'.format(
+                        #word1, word2, D).encode('utf8'))
                 sim = sim + 0.5 * math.exp(-self.alpha * D)
-            logging.debug(u'LSA sim + wn boost: {0} -- {1} -- {2}'.format(
-                word1, word2, sim).encode('utf8'))
+            #logging.debug(u'LSA sim + wn boost: {0} -- {1} -- {2}'.format(
+                #word1, word2, sim).encode('utf8'))
         d = sim if sim <= 1 else 1
         d = d if d >= 0 else 0
         self.store_cache(word1, word2, d)
@@ -912,8 +959,8 @@ class WordnetCache(object):
                         if len(lsn) <= th:
                             self.senses[word].add(
                                 lemma.name().replace('_', ' '))
-            logging.info('Synonyms for word [{0}]: {1}'.format(
-                word.encode('utf8'), self.senses[word]))
+            #logging.info('Synonyms for word [{0}]: {1}'.format(
+                #word.encode('utf8'), self.senses[word]))
         return self.senses[word]
 
 
@@ -926,7 +973,7 @@ class STSWrapper(object):
 
     def __init__(self, sim_function='lsa_sim', wn_cache=None,
                  hunspell_wrapper=None):
-        logging.info('reading global frequencies...')
+        #logging.info('reading global frequencies...')
         self.sim_function = sim_function
         self.read_freqs()
         self.sense_cache = {}
@@ -966,6 +1013,13 @@ class STSWrapper(object):
         nltk_sw = set(nltk_stopwords.words('english')) - set(
             AlignAndPenalize.pronouns.iterkeys())
         return nltk_sw.union(STSWrapper.custom_stopwords)
+
+    def parse_twitter_test_line(self, fd):
+        sen1 = fd[2].split(' ')
+        sen2 = fd[3].split(' ')
+        tags1 = fd[4].split(' ')
+        tags2 = fd[5].split(' ')
+        return sen1, sen2, tags1, tags2
 
     def parse_twitter_line(self, fd):
         sen1 = fd[2].split(' ')
@@ -1022,10 +1076,10 @@ class STSWrapper(object):
 
     def parse_sts_line(self, fields):
         sen1_toks, sen2_toks = map(self.tokenize, fields)
-        logging.info("tokenized: {0}".format((sen1_toks, sen2_toks)))
+        #logging.info("tokenized: {0}".format((sen1_toks, sen2_toks)))
         sen1_pos, sen2_pos = map(self.hunpos_tagger.tag,
                                  (sen1_toks, sen2_toks))
-        logging.info("pos-tagged: {0}".format((sen1_pos, sen2_pos)))
+        #logging.info("pos-tagged: {0}".format((sen1_pos, sen2_pos)))
         sen1_ne, sen2_ne = map(nltk.ne_chunk, (sen1_pos, sen2_pos))
         sen1_toks, sen2_toks = map(lambda l: [w.lower() for w in l],
                                    (sen1_toks, sen2_toks))
@@ -1033,26 +1087,29 @@ class STSWrapper(object):
         return sen1_toks, sen2_toks, tags1, tags2
 
     def read_freqs(self, ifn=__EN_FREQ_PATH__):
-        self.global_freqs = {}
+        global global_freqs
+        if len(global_freqs) > 0:
+            #logging.info('Skipping global freq reading')
+            return
         with open(ifn) as f:
             for l in f:
                 try:
                     fd = l.decode('utf8').strip().split(' ')
                     word = fd[1]
                 except:
-                    logging.warning(
-                        "error reading line in freq data: {0}".format(repr(l)))
+                    #logging.warning(
+                        #"error reading line in freq data: {0}".format(repr(l)))
                     continue
                 logfreq = math.log(int(fd[0]) + 2)
                 #we add 2 so we can calculate inverse logfreq for OOVs
-                self.global_freqs[word] = logfreq
+                global_freqs[word] = logfreq
 
     def is_frequent_adverb(self, word, pos):
         answer = self.frequent_adverbs_cache.setdefault(
             (pos is not None and pos[:2] == 'RB' and
-             self.global_freqs.get(word, 2) > 500000))
-        if answer:
-            logging.warning("discarding frequent adverb: {0}".format(word))
+             global_freqs.get(word, 2) > 500000))
+        #if answer:
+            #logging.warning("discarding frequent adverb: {0}".format(word))
         return answer
 
     def process_line(self, line):
@@ -1060,6 +1117,9 @@ class STSWrapper(object):
         if args.shell:
             parser = parse_interactive_input
             map_tags = dummy_map
+        elif len(fields) == 6:
+            parser = self.parse_twitter_test_line
+            map_tags = AlignAndPenalize.twitter_map_tags
         elif len(fields) == 7:
             parser = self.parse_twitter_line
             map_tags = AlignAndPenalize.twitter_map_tags
@@ -1077,6 +1137,8 @@ class STSWrapper(object):
         aligner.get_senses()
         aligner.get_most_similar_tokens()
         print aligner.sentence_similarity()
+        if args.full_test:
+            return aligner.T
 
 
 def dummy_map(tags, token_d):
@@ -1114,7 +1176,7 @@ class HybridSimWrapper():
         lsa_sim = self.lsa_wrapper.word_similarity(x, y, x_i, y_i)
         ngram_sim = AlignAndPenalize.ngram_sim(x, y, x_i, y_i)
         max_sim = max((machine_sim, lsa_sim, ngram_sim))
-        logging.info("max sim: {0} vs. {1}: {2}".format(x, y, max_sim))
+        #logging.info("max sim: {0} vs. {1}: {2}".format(x, y, max_sim))
         return max_sim
 
     def average_sim(self, x, y, x_i, y_i):
@@ -1148,12 +1210,14 @@ def parse_args():
     p.add_argument('--lower', action='store_true', default=False,
                    help='lower all input')
     p.add_argument('--synonyms', type=str)
+    p.add_argument('--full-test', help='try all similarity methods and output the results in a feture file', action='store_true', default=False)
+    p.add_argument('--features', type=str, default='features', help='output features to file')
     return p.parse_args()
 
 
 def synonym_sim(synonyms, word1, word2):
     if word1 in synonyms and word2 in synonyms[word1]:
-        logging.info('Synonyms: {0} - {1}'.format(word1, word2))
+        #logging.info('Synonyms: {0} - {1}'.format(word1, word2))
         return 1.0
     return 0.0
 
@@ -1171,8 +1235,11 @@ def read_synonyms(fn):
     return synonyms
 
 
-def get_processer(args):
-    sim_type = args.sim_type
+def get_processer(args, sim_type='', vectors_fn=None):
+    if not vectors_fn:
+        vectors_fn = args.vectors
+    if not sim_type:
+        sim_type = args.sim_type
     batch = args.batch
     if sim_type == "machine_only":
         sts_wrapper = STSWrapper()
@@ -1197,7 +1264,7 @@ def get_processer(args):
                                  hunspell_wrapper=hunspell_wrapper)
     elif sim_type == 'synonyms':
         synonyms = read_synonyms(args.synonyms)
-        logging.info('Synonyms read from file: {0}'.format(args.synonyms))
+        #logging.info('Synonyms read from file: {0}'.format(args.synonyms))
         sts_wrapper = STSWrapper(
             sim_function=lambda a, b, c, d: synonym_sim(synonyms, a, b),
             wn_cache=wn_cache, hunspell_wrapper=hunspell_wrapper)
@@ -1238,7 +1305,7 @@ def get_processer(args):
                                  hunspell_wrapper=hunspell_wrapper)
 
     elif sim_type == 'twitter_embedding':
-        lsa_wrapper = LSAWrapper(args.vectors, word2vec=False)
+        lsa_wrapper = LSAWrapper(vectors_fn, word2vec=False)
         sts_wrapper = STSWrapper(sim_function=lsa_wrapper.word_similarity,
                                  wn_cache=wn_cache,
                                  hunspell_wrapper=hunspell_wrapper)
@@ -1251,6 +1318,16 @@ def get_processer(args):
 args = parse_args()
 
 
+def setup_full_test():
+    processers = []
+    for sim in ['none', 'ngram', 'synonyms', 'lsa']:
+        processers.append(get_processer(args, sim_type=sim))
+        logging.info('{0} initialized'.format(sim))
+    for vec_fn in ['5gram/gensim_5gram', '6gram_withhashtag/gensim_6gram_withhashtag']:
+        processers.append(get_processer(args, sim_type='twitter_embedding', vectors_fn=vec_fn))
+    return processers
+
+
 def main():
     #sim_type = argv[1]
     #batch = len(argv) == 3 and argv[2] == 'batch'
@@ -1261,6 +1338,22 @@ def main():
         "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
 
     logging.warning('Similarity type: {0}'.format(args.sim_type))
+    if args.full_test:
+        processers = setup_full_test()
+        for c, line in enumerate(stdin):
+            if c % 100 == 0:
+                logging.info('Processed {0} lines'.format(c))
+            global feats
+            all_feats = []
+            if args.lower:
+                line = line.lower()
+            for pr in processers:
+                feats = []
+                sim = pr(line)
+                all_feats.append(sim)
+            all_feats.extend(feats[0])
+            feat_f.write(' '.join(map(str, all_feats)) + '\n')
+        return
     processer = get_processer(args)
 
     if not args.shell:
@@ -1288,10 +1381,12 @@ def main():
 
 if __name__ == '__main__':
     oov_stat = defaultdict(set)
+    feat_f = open(args.features, 'w+')
+    #import cProfile
+    #cProfile.run('main()', 'log/stats.cprofile')
     main()
     if global_flags['log_oov_stat']:
         for k, v in oov_stat.iteritems():
             with open('log/tmp/' + k, 'w') as f:
                 f.write('\n'.join(sorted(v)).encode('utf8'))
-    #import cProfile
-    #cProfile.run('main()', 'stats_new.cprofile')
+    feat_f.close()
