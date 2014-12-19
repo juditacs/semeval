@@ -33,7 +33,6 @@ The alignment algorithm computes word similarity based on their machine represen
 = External data used other than that provided by the task organizers =
 
 * Monolingual corpora
-* Multilingual corpora
 * WordNet
 * Other dictionaries: Longman Dictionary (LDOCE)
 * Other dictionaries: 4lang concept dictionary

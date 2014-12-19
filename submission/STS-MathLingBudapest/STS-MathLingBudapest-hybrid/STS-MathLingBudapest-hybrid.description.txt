@@ -11,74 +11,33 @@ ignored.
 
 = TEAM =
 
-[Please include TeamID]
+MathLingBudapest
 
 = DESCRIPTION OF RUN (WITH RESPECT TO OTHER RUNS) =
 
-[Please explain briefly what makes this run different from the rest]
+Outputs from three systems - those used in the machine and embedding runs and one that uses a simple character-based metric for word similarity -, are combined using weights that have been obtained by performing least squares regression on all 2012-2014 datasets.
 
 
 = IS YOUR APPROACH SUPERVISED? =
 
-[Please leave one of the following]
-* Supervised
-* Unsupervised
 * Semi-supervised
 
 = IMPORTANT TOOLS USED =
 
-[Please keep those tools that you used, delete those you did not use, and add more lines if needed]
-
 * Part of speech tagger
 * Lemmatizer
 * Multiword expressions recognition
-* Syntax parser
-* Semantic Role Labeling
-* Word Sense Disambiguation
-* Named Entity Disambiguation
 * Lexical Substitution
 * Distributional similarity
 * Knowledge-based similarity
-* Time and date resolution
-* Named Entity recognition
-* Sentiment Analysis
-* Metaphor and/or Metonymy
-* Logical Inference
-* Textual Entailment
-* Correference
-* Scoping
-* ... (add as needed)
+* Dependency Parser
 
 
 = External data used other than that provided by the task organizers =
 
-[Please keep those resources that you used, delete those you did not use, and add more lines if needed]
-
 * Monolingual corpora
-* Multilingual corpora
 * WordNet
-* PropBank
-* FrameNet
-* Ontonotes
-* Repositories for named-entities and acronyms
-* Other dictionaries (please specify)
-* Wikipedia
-* VerbOcean
-* Dirt
 * Mikolov embeddings
-* PPDB
-* Other distributional similarity thesauri (please specify)
-* ... (add as needed)
+* Other dictionaries: Longman Dictionary (LDOCE)
+* Other dictionaries: 4lang concept dictionary
 
-
-
--- 
--- 
-Website of task, http://alt.qcri.org/semeval2015/task2/
-To post to this group, send email to sts-semeval@googlegroups.com
-To unsubscribe, send email to sts-semeval+unsubscribe@googlegroups.com
-For more options, http://groups.google.com/group/sts-semeval?hl=en?hl=en
---- 
-You received this message because you are subscribed to the Google Groups "STS SemEval" group.
-To unsubscribe from this group and stop receiving emails from it, send an email to sts-semeval+unsubscribe@googlegroups.com.
-For more options, visit https://groups.google.com/d/optout.
