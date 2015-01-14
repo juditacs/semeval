@@ -11,7 +11,6 @@ from sys import stderr, stdin
 from utils import twitter_candidates
 from gensim.models import Word2Vec
 
-
 def log(s):
     stderr.write(s)
     stderr.flush()
@@ -23,14 +22,8 @@ from nltk.corpus import wordnet
 from nltk.corpus import stopwords as nltk_stopwords
 from nltk.tag.hunpos import HunposTagger
 
-from pymachine.src.wrapper import Wrapper as MachineWrapper
-from pymachine.src.similarity import SentenceSimilarity as MachineSenSimilarity
-from pymachine.src.similarity import WordSimilarity as MachineWordSimilarity
-
 from hunspell_wrapper import HunspellWrapper
-
 assert HunspellWrapper  # silence pyflakes
-assert MachineWrapper  # silence pyflakes
 
 __EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/umbc_webbase.unigram_freq'  # nopep8
 feats = []
@@ -1244,12 +1237,16 @@ def get_processer(args, sim_type='', vectors_fn=None):
     if not sim_type:
         sim_type = args.sim_type
     batch = args.batch
+
+    if sim_type in ("machine_only", "machine", "hybrid"):
+        from pymachine.wrapper import Wrapper as MachineWrapper
+        from pymachine.similarity import SentenceSimilarity as MachineSenSimilarity  # nopep8
+        from pymachine.similarity import WordSimilarity as MachineWordSimilarity  # nopep8
+
     if sim_type == "machine_only":
         sts_wrapper = STSWrapper()
         machine_wrapper = MachineWrapper(
-            os.path.join(os.environ['MACHINEPATH'],
-                         'pymachine/tst/definitions_test.cfg'),
-            include_longman=True, batch=batch)
+            'configs/machine_res.cfg', include_longman=True, batch=batch)
         machine_sim = MachineSenSimilarity(machine_wrapper)
         return lambda l: machine_sim.process_line(
             l, parser=sts_wrapper.parse_sts_line,
@@ -1274,9 +1271,7 @@ def get_processer(args, sim_type='', vectors_fn=None):
 
     elif sim_type == 'machine':
         machine_wrapper = MachineWrapper(
-            os.path.join(os.environ['MACHINEPATH'],
-                         'pymachine/tst/definitions_test.cfg'),
-            include_longman=True, batch=batch)
+            'configs/machine_res.cfg', include_longman=True, batch=batch)
         machine_sim = MachineWordSimilarity(machine_wrapper)
         sts_wrapper = STSWrapper(sim_function=machine_sim.word_similarity,
                                  wn_cache=wn_cache,
@@ -1285,9 +1280,7 @@ def get_processer(args, sim_type='', vectors_fn=None):
     elif sim_type == 'hybrid':
         lsa_wrapper = LSAWrapper()
         machine_wrapper = MachineWrapper(
-            os.path.join(os.environ['MACHINEPATH'],
-                         'pymachine/tst/definitions_test.cfg'),
-            include_longman=True, batch=batch)
+            'configs/machine_res.cfg', include_longman=True, batch=batch)
 
         machine_sim = MachineWordSimilarity(machine_wrapper)
 
