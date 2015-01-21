@@ -8,7 +8,9 @@ do
     echo $topic
     score=$(test_evaluation_task2a/correlation-noconfidence.pl $file $2/STS.input.$topic.txt.out 2> /dev/null| cut -d' ' -f2-)
     echo $score
-    lines=$(wc -l < $file)
+    lines=$(cat $file | grep -v '^$' | wc -l)
+    #lines=$(wc -l < $file)
+    echo $lines
     total_score=`bc <<< "$total_score+($lines*$score)"`
     total_lines=$(($total_lines+$lines))
 
