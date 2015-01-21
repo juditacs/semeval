@@ -1,0 +1,43 @@
+
+In order to facilitate statistics on tools and resources, please
+select the one that apply to you below.
+
+Please don't modify lines starting with =.
+
+Please delete lines starting with [. All lines starting with [ will be
+ignored.
+
+========================
+
+= TEAM =
+
+MathLingBudapest
+
+= DESCRIPTION OF RUN (WITH RESPECT TO OTHER RUNS) =
+
+Outputs from three systems - those used in the machine and embedding runs and one that uses a simple character-based metric for word similarity -, are combined using weights that have been obtained by performing least squares regression on all 2012-2014 datasets.
+
+
+= IS YOUR APPROACH SUPERVISED? =
+
+* Semi-supervised
+
+= IMPORTANT TOOLS USED =
+
+* Part of speech tagger
+* Lemmatizer
+* Multiword expressions recognition
+* Lexical Substitution
+* Distributional similarity
+* Knowledge-based similarity
+* Dependency Parser
+
+
+= External data used other than that provided by the task organizers =
+
+* Monolingual corpora
+* WordNet
+* Mikolov embeddings
+* Other dictionaries: Longman Dictionary (LDOCE)
+* Other dictionaries: 4lang concept dictionary
+

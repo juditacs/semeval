@@ -1,0 +1,36 @@
+
+In order to facilitate statistics on tools and resources, please
+select the one that apply to you below.
+
+Please don't modify lines starting with =.
+
+Please delete lines starting with [. All lines starting with [ will be
+ignored.
+
+========================
+
+= TEAM =
+
+MathLingBudapest
+
+= DESCRIPTION OF RUN (WITH RESPECT TO OTHER RUNS) =
+
+The alignment algorithm uses a continuous vector space model (word embedding) to measure word similarity
+
+= IS YOUR APPROACH SUPERVISED? =
+
+* Unsupervised
+
+= IMPORTANT TOOLS USED =
+
+* Part of speech tagger
+* Lemmatizer
+* Multiword expressions recognition
+* Lexical Substitution
+* Distributional similarity
+
+= External data used other than that provided by the task organizers =
+
+* WordNet
+* Mikolov embeddings
+

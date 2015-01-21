@@ -26,8 +26,31 @@ def get_data(gold_dir, dirs):
                             for f in file_objs])
     return vectors, predicates
 
+def get_gold_from_dir(gold_dir):
+    predicates = []
+    gold_files = [fn for fn in os.listdir(gold_dir) if ".gs." in fn]
+    for fn in gold_files:
+        for line in open(os.path.join(gold_dir, fn)):
+            predicates.append(float(line.strip()))
+    return predicates
+
+def read_feats_from_dir(dirname):
+    feats = []
+    for fn in os.listdir(dirname):
+        feats += read_feats_from_file(os.path.join(dirname, fn))
+    return feats
+
+def read_feats_from_file(fn):
+    feats = []
+    with open(fn) as f:
+        for l in f:
+            feats.append([float(i) for i in l.strip().split(' ')])
+    return feats
+
 def train_regression(args):
     model_name, gold_dir, dirs = args[0], args[1], args[2:]
+    #vectors = read_feats_from_dir(feat_dir)
+    #predicates = get_gold_from_dir(gold_dir)
     vectors, predicates = get_data(gold_dir, dirs)
     w = linalg.lstsq(vectors, predicates)
     params = w[0]

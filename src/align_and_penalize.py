@@ -11,7 +11,6 @@ from sys import stderr, stdin
 from utils import twitter_candidates
 from gensim.models import Word2Vec
 
-
 def log(s):
     stderr.write(s)
     stderr.flush()
@@ -23,14 +22,8 @@ from nltk.corpus import wordnet
 from nltk.corpus import stopwords as nltk_stopwords
 from nltk.tag.hunpos import HunposTagger
 
-from pymachine.src.wrapper import Wrapper as MachineWrapper
-from pymachine.src.similarity import SentenceSimilarity as MachineSenSimilarity
-from pymachine.src.similarity import WordSimilarity as MachineWordSimilarity
-
 from hunspell_wrapper import HunspellWrapper
-
 assert HunspellWrapper  # silence pyflakes
-assert MachineWrapper  # silence pyflakes
 
 __EN_FREQ_PATH__ = '/mnt/store/home/hlt/Language/English/Freq/umbc_webbase.unigram_freq'  # nopep8
 feats = []
@@ -52,17 +45,17 @@ def jaccard(s1, s2):
 
 
 global_flags = {
-    'filter_stopwords': False,
-    'penalize_antonyms': True,
-    'penalize_questions': True,
-    'penalize_named_entities': True,
+    'filter_stopwords': True,
+    'penalize_antonyms': False,
+    'penalize_questions': False,
+    'penalize_named_entities': False,
     'wordnet_boost': True,
-    'twitter_norm': True,
+    'twitter_norm': False,
     'ngrams': 4,
     'ngram_padding': False,
     'ngram_sim': dice,
     'log_oov_stat': False,
-    'verb_tense_penalty': True,
+    'verb_tense_penalty': False,
 }
 
 
@@ -212,16 +205,16 @@ class AlignAndPenalize(object):
                 for y_i, y in enumerate(self.sen2)))
             x['most_sim_word'] = most_sim
             x['most_sim_score'] = score
-            #logging.info(u'{0}. {1} -> {2} ({3})'.format(
-                #x_i, x['token'], most_sim, score))
+            logging.info(u'{0}. {1} -> {2} ({3})'.format(
+                x_i, x['token'], most_sim, score))
         for y_i, y in enumerate(self.sen2):
             score, most_sim = max((
                 (self.sim_xy(y['token'], x['token'], x_i, y_i), x['token'])
                 for x_i, x in enumerate(self.sen1)))
             y['most_sim_word'] = most_sim
             y['most_sim_score'] = score
-            #logging.info(u'{0}. {1} -> {2} ({3})'.format(
-                #y_i, y['token'], most_sim, score))
+            logging.info(u'{0}. {1} -> {2} ({3})'.format(
+                y_i, y['token'], most_sim, score))
 
     def sim_xy(self, x, y, x_pos, y_pos):
         max1 = 0.0
@@ -244,7 +237,7 @@ class AlignAndPenalize(object):
             sim, best_pair = max1, best_pair_1
         else:
             sim, best_pair = max2, best_pair_2
-        #logging.info('best pair: {0} ({1})'.format(sim, best_pair))
+        logging.info('best pair: {0} ({1})'.format(sim, best_pair))
         return sim
 
     def baseline_similarity(self, x, y, x_i, y_i):
@@ -255,19 +248,19 @@ class AlignAndPenalize(object):
         if x == y:
             return 1
         if self.is_num_equivalent(x, y):
-            #logging.info(u'equivalent numbers: {0}, {1}'.format(x, y))
+            logging.info(u'equivalent numbers: {0}, {1}'.format(x, y))
             return 1
         if self.is_pronoun_equivalent(x, y):
-            #logging.info(u'equivalent pronouns: {0}, {1}'.format(x, y))
+            logging.info(u'equivalent pronouns: {0}, {1}'.format(x, y))
             return 1
         if self.is_acronym(x, y, x_i, y_i):
-            #logging.info(u'acronym match: {0}, {1}'.format(x, y))
+            logging.info(u'acronym match: {0}, {1}'.format(x, y))
             return 1
         if self.is_headof(x, y, x_i, y_i):
-            #logging.info(u'head_of match: {0}, {1}'.format(x, y))
+            logging.info(u'head_of match: {0}, {1}'.format(x, y))
             return 1
         if self.is_consecutive_match(x, y, x_i, y_i):
-            #logging.info(u'consecutive match: {0}, {1}'.format(x, y))
+            logging.info(u'consecutive match: {0}, {1}'.format(x, y))
             return 1
 
         sim = self.sim_function(x, y, x_i, y_i)
@@ -392,7 +385,7 @@ class AlignAndPenalize(object):
         for k, v in sorted(self.pen_feats.items()):
             out.append(v)
         feats.append(out)
-        #logging.info('T={0}, P={1}'.format(self.T, self.P))
+        logging.info('T={0}, P={1}'.format(self.T, self.P))
         #sim = self.T if self.T >= 0.55 else self.T - self.P
         #sim = self.T - self.P*(max(0, 0.55-self.T) / 0.55)
         sim = self.T - self.P
@@ -414,10 +407,10 @@ class AlignAndPenalize(object):
 
     def is_antonym(self, w1, w2):
         if w1 in self.sts_wrapper.antonym_cache(w2):
-            #logging.info('Antonym found: {0} -- {1}'.format(w1, w2))
+            logging.info('Antonym found: {0} -- {1}'.format(w1, w2))
             return True
         if w2 in self.sts_wrapper.antonym_cache(w1):
-            #logging.info('Antonym found: {0} -- {1}'.format(w2, w1))
+            logging.info('Antonym found: {0} -- {1}'.format(w2, w1))
             return True
         return False
 
@@ -1097,8 +1090,8 @@ class STSWrapper(object):
                     fd = l.decode('utf8').strip().split(' ')
                     word = fd[1]
                 except:
-                    #logging.warning(
-                        #"error reading line in freq data: {0}".format(repr(l)))
+                    logging.warning(
+                        "error reading line in freq data: {0}".format(repr(l)))
                     continue
                 logfreq = math.log(int(fd[0]) + 2)
                 #we add 2 so we can calculate inverse logfreq for OOVs
@@ -1210,8 +1203,11 @@ def parse_args():
     p.add_argument('--lower', action='store_true', default=False,
                    help='lower all input')
     p.add_argument('--synonyms', type=str)
-    p.add_argument('--full-test', help='try all similarity methods and output the results in a feture file', action='store_true', default=False)
-    p.add_argument('--features', type=str, default='features', help='output features to file')
+    p.add_argument('--full-test',
+                   help='try all similarity methods and output the results in a feture file',  # nopep8
+                   action='store_true', default=False)
+    p.add_argument('--features', type=str, default='features',
+                   help='output features to file')
     return p.parse_args()
 
 
@@ -1241,12 +1237,16 @@ def get_processer(args, sim_type='', vectors_fn=None):
     if not sim_type:
         sim_type = args.sim_type
     batch = args.batch
+
+    if sim_type in ("machine_only", "machine", "hybrid"):
+        from pymachine.wrapper import Wrapper as MachineWrapper
+        from pymachine.similarity import SentenceSimilarity as MachineSenSimilarity  # nopep8
+        from pymachine.similarity import WordSimilarity as MachineWordSimilarity  # nopep8
+
     if sim_type == "machine_only":
         sts_wrapper = STSWrapper()
         machine_wrapper = MachineWrapper(
-            os.path.join(os.environ['MACHINEPATH'],
-                         'pymachine/tst/definitions_test.cfg'),
-            include_longman=True, batch=batch)
+            'configs/machine_res.cfg', include_longman=True, batch=batch)
         machine_sim = MachineSenSimilarity(machine_wrapper)
         return lambda l: machine_sim.process_line(
             l, parser=sts_wrapper.parse_sts_line,
@@ -1271,9 +1271,7 @@ def get_processer(args, sim_type='', vectors_fn=None):
 
     elif sim_type == 'machine':
         machine_wrapper = MachineWrapper(
-            os.path.join(os.environ['MACHINEPATH'],
-                         'pymachine/tst/definitions_test.cfg'),
-            include_longman=True, batch=batch)
+            'configs/machine_res.cfg', include_longman=True, batch=batch)
         machine_sim = MachineWordSimilarity(machine_wrapper)
         sts_wrapper = STSWrapper(sim_function=machine_sim.word_similarity,
                                  wn_cache=wn_cache,
@@ -1282,9 +1280,7 @@ def get_processer(args, sim_type='', vectors_fn=None):
     elif sim_type == 'hybrid':
         lsa_wrapper = LSAWrapper()
         machine_wrapper = MachineWrapper(
-            os.path.join(os.environ['MACHINEPATH'],
-                         'pymachine/tst/definitions_test.cfg'),
-            include_longman=True, batch=batch)
+            'configs/machine_res.cfg', include_longman=True, batch=batch)
 
         machine_sim = MachineWordSimilarity(machine_wrapper)
 
@@ -1320,11 +1316,13 @@ args = parse_args()
 
 def setup_full_test():
     processers = []
-    for sim in ['none', 'ngram', 'synonyms', 'lsa']:
+    for sim in ['ngram', 'machine', 'lsa']:
         processers.append(get_processer(args, sim_type=sim))
         logging.info('{0} initialized'.format(sim))
-    for vec_fn in ['5gram/gensim_5gram', '6gram_withhashtag/gensim_6gram_withhashtag']:
-        processers.append(get_processer(args, sim_type='twitter_embedding', vectors_fn=vec_fn))
+    for vec_fn in ['5gram/gensim_5gram',
+                   '6gram_withhashtag/gensim_6gram_withhashtag']:
+        processers.append(get_processer(
+            args, sim_type='twitter_embedding', vectors_fn=vec_fn))
     return processers
 
 
@@ -1342,7 +1340,7 @@ def main():
         processers = setup_full_test()
         for c, line in enumerate(stdin):
             if c % 100 == 0:
-                logging.info('Processed {0} lines'.format(c))
+                logging.warning('Processed {0} lines'.format(c))
             global feats
             all_feats = []
             if args.lower:
