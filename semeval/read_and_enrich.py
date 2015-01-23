@@ -97,7 +97,10 @@ class Enricher(object):
         if tags:
             self.parse_tags(tokens, tags)
         else:
-            self.tag_tokens(tokens)
+            if self.conf.get('global', 'tokenizer') == 'sts':
+                self.tag_tokens(tokens)
+            else:
+                self.dummy_tag_tokens(tokens)
         if self.conf.getboolean('global', 'lower'):
             for t in tokens:
                 t['token'] = t['token'].lower()
@@ -132,6 +135,12 @@ class Enricher(object):
             tokens[i]['pos'] = sp[2]
             tokens[i]['chunk'] = sp[3]
             i += 1
+
+    def dummy_tag_tokens(self, tokens):
+        for t in tokens:
+            t['pos'] = ''
+            t['ner'] = ''
+            t['chunk'] = ''
 
     def tag_tokens(self, tokens):
         words = [i['token'] for i in tokens]
