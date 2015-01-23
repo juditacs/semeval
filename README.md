@@ -21,3 +21,12 @@ for f in data/2014-test/nosim_4gr_d/STS.input.*; do topic=`basename $f | cut -d'
 
 This script runs a regression using the train features and labels specified in argv[1] and argv[3] and test them on the dev.
 I also implemented an SVM classifier, you need to replace the appropriate lines in the main function.
+
+# New version
+
+The new refactored version can be invoked from the repo's base directory using:
+
+    cat twitter_test_data | python semeval/paraphrases.py -c configs/twitter.cfg > out
+
+Right now it does not produce the submitted results because crucial features are missing.
+Once they are implemented, I will try to reproduce the twitter results (without machines).
