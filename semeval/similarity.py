@@ -1,3 +1,6 @@
+import logging
+
+
 def get_similarity(config, section):
     sim_type = config.get(section, 'type')
     if sim_type == 'jaccard' or sim_type == 'dice':
@@ -6,7 +9,14 @@ def get_similarity(config, section):
         return NGramSimilarity(n, sim_type, padding)
 
 
-class NGramSimilarity(object):
+class BaseSimilarity(object):
+
+    def word_sim(self, word1, word2):
+        logging.warning('The BaseSimilarity word_sim method was called. Did you forget to implement it in the derived class?')
+        return 0.0
+
+
+class NGramSimilarity(BaseSimilarity):
 
     def __init__(self, n, sim_type='jaccard', padding=False):
         self.n = n
