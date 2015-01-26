@@ -1,4 +1,6 @@
 from collections import defaultdict
+from nltk.corpus import wordnet
+import logging
 
 from resources import Resources
 import similarity
@@ -12,6 +14,7 @@ class AlignAndPenalize(object):
         self.conf = conf
         self.init_similarities()
         self.fallback_similarity = None
+        self._antonym_cache = {}
 
     def init_similarities(self):
         self.similarities = {}
@@ -36,37 +39,91 @@ class AlignAndPenalize(object):
 #            print(u'{0} -> {1}: {2}'.format(pair.sen2.tokens[i]['token'], pair.sen1.tokens[j]['token'], sc).encode('utf8'))
 #        print pair.match1
         self.T = self.sentence_similarity(pair)
-        self.P = self.compute_penalty(pair)
         final_score = self.compute_final_score()
         return final_score
 
     def compute_penalty(self, pair):
+        penalties = []
         if self.conf.getboolean('penalty', 'sim_too_low'):
-            PA = self.penalize_low_sim(pair)
-        else:
-            PA = 0
-        #TODO
-        return PA
+            penalties.append(self.penalize_low_sim(pair))
+        if self.conf.getboolean('penalty', 'penalize_antonyms'):
+            penalties.extend(self.penalize_antonyms(pair))
+        if self.conf.getboolean('penalty', 'penalize_named_entities'):
+            penalties.append(self.ne_penalty(pair))
+        if self.conf.getboolean('penalty', 'penalize_questions'):
+            penalties.append(self.question_penalty(pair))
+        if self.conf.getboolean('penalty', 'penalize_verb_tense'):
+            penalties.append(self.verb_tense_penalty(pair))
+        return self.summarize_penalties(penalties)
+
+    def summarize_penalties(self, penalties):
+        sum_pen = defaultdict(lambda: 0.0)
+        for p in penalties:
+            for typ, sc in p.iteritems():
+                sum_pen[typ] += sc
+        return sum_pen
+
+    def question_penalty(self, pair):
+        isq1 = (pair.sen1.tokens[0]['token'].lower() in
+                Resources.question_starters)
+        isq2 = (pair.sen2.tokens[0]['token'].lower() in
+                Resources.question_starters)
+        if isq1 == isq2:
+            return defaultdict(lambda: 0)
+        return defaultdict(lambda: 1.0 / (len(pair.sen1.tokens) + len(pair.sen2.tokens)))
+
+    def verb_tense_penalty(self, pair):
+        past = set(['vbd', 'vbn'])
+        is_past1 = False
+        for tok in pair.sen1.tokens:
+            if tok['pos'].lower() in past:
+                is_past1 = True
+        is_past2 = False
+        for tok in pair.sen2.tokens:
+            if tok['pos'].lower() in past:
+                is_past2 = True
+        if is_past1 == is_past2:
+            return defaultdict(lambda: 0)
+        return defaultdict(lambda: 1.0 / (len(pair.sen1.tokens) + len(pair.sen2.tokens)))
+
+    def penalize_antonyms(self, pair):
+        b1 = defaultdict(float)
+        b2 = defaultdict(float)
+        for typ, match in pair.match1.iteritems():
+            for i, (sc, t2) in enumerate(match):
+                if self.is_antonym(pair.sen1.tokens[i]['token'], pair.sen2.tokens[t2]['token']):
+                    b1[typ] += sc + 0.5
+        for typ, match in pair.match2.iteritems():
+            for i, (sc, t2) in enumerate(match):
+                if self.is_antonym(pair.sen2.tokens[i]['token'], pair.sen1.tokens[t2]['token']):
+                    b1[typ] += sc + 0.5
+        return b1, b2
 
     def penalize_low_sim(self, pair):
-        #TODO
-        return 0
+        th = 0.05
+        PA = {}
+        for typ, match in pair.match1.iteritems():
+            p1 = sum(m[0] for m in match if m[0] < th) / len(pair.sen1.tokens)
+            p2 = sum(m[0] for m in pair.match2[typ] if m[0] < th) / len(pair.sen2.tokens)
+            PA[typ] = p1 + p2
+        return PA
 
     def compute_final_score(self):
         mode = self.conf.get('final_score', 'mode')
         if mode == 'average':
             score = sum((s[0] + s[1]) for s in self.T.itervalues()) / len(self.T)
-            return score
         elif mode == 'max':
-            return max(s[0] + s[1] for s in self.T.itervalues())
+            score = max(s[0] + s[1] for s in self.T.itervalues())
         elif mode == 'min':
-            return min(s[0] + s[1] for s in self.T.itervalues())
+            score = min(s[0] + s[1] for s in self.T.itervalues())
         elif mode.startswith('similarity_'):
             typ = mode.lstrip('similarity_')
-            return (self.T[typ][0] + self.T[typ][1])
+            score = (self.T[typ][0] + self.T[typ][1])
+        return score
 
     def sentence_similarity(self, pair):
         sum_scores = defaultdict(lambda: [0.0, 0.0])
+        self.P = self.compute_penalty(pair)
         for typ, scores in pair.match1.iteritems():
             sum_scores[typ][0] = sum(s[0] for s in scores) / float(2 * len(scores))
         for typ, scores in pair.match2.iteritems():
@@ -128,7 +185,7 @@ class AlignAndPenalize(object):
         for j, rt in enumerate(right_tokens):
             for typ, simtype in self.similarities.iteritems():
                 sim = self.senses_sim(left, rt, typ)
-                if sim > max_sim[typ]:
+                if sim >= max_sim[typ]:
                     max_sim[typ] = sim
                     max_j[typ] = j
         return max_sim, max_j
@@ -150,10 +207,90 @@ class AlignAndPenalize(object):
             AlignAndPenalize.word_cache[(w1, w2)] = 1
             AlignAndPenalize.word_cache[(w2, w1)] = 1
             return 1
-        #TODO acronym
-        #TODO headof
-        #TODO compound
         sim = self.similarities[simtype].word_sim(w1, w2)
         if sim is None and self.fallback_similarity:
             return self.fallback_similarity.word_sim(w1, w2)
         return sim
+
+    def antonym_cache(self, key):
+        if not key in self._antonym_cache:
+            self._antonym_cache[key] = set()
+            for synset in wordnet.synsets(key):
+                for lemma in synset.lemmas():
+                    for antonym in lemma.antonyms():
+                        self._antonym_cache[key].add(
+                            antonym.name().split('.')[0])
+        return self._antonym_cache[key]
+
+    def is_antonym(self, w1, w2):
+        if w1 in self.antonym_cache(w2):
+            logging.info('Antonym found: {0} -- {1}'.format(w1, w2))
+            return True
+        if w2 in self.antonym_cache(w1):
+            return True
+        return False
+
+    def find_ne_in_other(self, ne1, ne2):
+        match = set()
+        missing = set()
+        for typ, nes in ne1.iteritems():
+            if not typ in ne2:
+                missing |= set(nes)
+                continue
+            for ne in nes:
+                if ne in ne2[typ]:
+                    match.add(ne)
+                    continue
+                words = ne.split(' ')
+                for i in range(1, len(words) - 1):
+                    p1 = ' '.join(words[:i])
+                    p2 = ' '.join(words[i:])
+                    if p1 in ne2[typ] or p2 in ne2[typ]:
+                        match.add(ne)
+                        continue
+                missing.add(ne)
+        return match, missing
+
+    def ne_penalty(self, pair):
+        ne1, ne2 = self.collect_entities(pair)
+        if not ne1 and not ne2:
+            return defaultdict(float)
+        match1, missing1 = self.find_ne_in_other(ne1, ne2)
+        match2, missing2 = self.find_ne_in_other(ne2, ne1)
+        if not match1 and not match2:
+            return defaultdict(lambda: 1)
+        diff1 = float(len(match1 - match2)) / len(match1 | match2)
+        diff2 = float(len(match2 - match1)) / len(match1 | match2)
+        return defaultdict(lambda: 1 - max([diff1, diff2]))
+
+    def collect_entities(self, pair):
+        current_ne = []
+        typ = ''
+        ne1 = defaultdict(list)
+        ne2 = defaultdict(list)
+        for tok in pair.sen1.tokens:
+            tok['ner'] = tok['ner'].lower()
+            if tok['ner'].startswith('b'):
+                if current_ne:
+                    ne1[typ].append(' '.join(current_ne))
+                typ = tok['ner'].split('-')[1]
+                current_ne = [tok['token']]
+            elif not tok['ner'] == 'o':
+                typ = tok['ner'].split('-')[1]
+                current_ne.append(tok['token'])
+        if current_ne:
+            ne1[typ].append(' '.join(current_ne))
+        current_ne = []
+        for tok in pair.sen2.tokens:
+            tok['ner'] = tok['ner'].lower()
+            if tok['ner'].startswith('b'):
+                if current_ne:
+                    ne2[typ].append(' '.join(current_ne))
+                typ = tok['ner'].split('-')[1]
+                current_ne = [tok['token']]
+            elif not tok['ner'] == 'o':
+                typ = tok['ner'].split('-')[1]
+                current_ne.append(tok['token'])
+        if current_ne:
+            ne2[typ].append(' '.join(current_ne))
+        return ne1, ne2
