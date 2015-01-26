@@ -14,6 +14,9 @@ def get_similarity(config, section):
         return NGramSimilarity(n, sim_type, padding)
     if sim_type == 'lsa':
         return LSASimilarity(section, config)
+    if sim_type == 'machine':
+        config_file = config.get(section, 'config_file')
+        return MachineSimilarity(config_file)
 
 
 class BaseSimilarity(object):
@@ -119,3 +122,15 @@ class NGramSimilarity(BaseSimilarity):
             sim = None
         self.word_cache[(word1, word2)] = sim
         return sim
+
+class MachineSimilarity(BaseSimilarity):
+
+    def __init__(self, config_file):
+        from pymachine.wrapper import Wrapper as MachineWrapper
+        from pymachine.similarity import WordSimilarity as MachineWordSimilarity  # nopep8
+        self.wrapper = MachineWrapper(
+            config_file, include_longman=True, batch=True)
+        self.machine_sim = MachineWordSimilarity(self.wrapper)
+
+    def word_sim(self, word1, word2):
+        return self.machine_sim.word_similarity(word1, word2, -1, -1)
