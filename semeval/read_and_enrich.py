@@ -6,7 +6,7 @@ import nltk
 
 from sentence import Sentence
 from resources import Resources
-from wordnet_cache import WordnetCache
+from wordnet_cache import WordnetCache as Wordnet
 
 
 class ReadAndEnrich(object):
@@ -50,7 +50,6 @@ class Enricher(object):
     def __init__(self, conf):
         self.conf = conf
         self.sentences = {}
-        self.wn_cache = WordnetCache(conf)
         if self.conf.get('global', 'tokenizer') == 'sts':
             self.html_parser = HTMLParser()
             self.hunpos = self.init_hunpos()
@@ -77,7 +76,10 @@ class Enricher(object):
 
     def add_wordnet_senses(self, tokens):
         for token in tokens:
-            token['senses'] = self.wn_cache.get_senses(token['token'])
+            if self.conf.getboolean('wordnet', 'enrich_with_senses'):
+                token['senses'] = Wordnet.get_senses(token['token'], self.conf.getint('wordnet', 'sense_threshold'))
+            else:
+                token['senses'] = set([token['token']])
 
     def filter_tokens(self, tokens):
         new_tok = []

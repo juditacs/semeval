@@ -30,6 +30,7 @@ class Resources(object):
     }
 
     stopwords = set(nltk.corpus.stopwords.words('english')) - set(pronouns.iterkeys())
+    twitter_cache = {}
     _global_freqs = None
     _adverb_cache = {}
 
@@ -37,8 +38,8 @@ class Resources(object):
     def is_pronoun_equivalent(word1, word2):
         l1 = word1.lower()
         l2 = word2.lower()
-        if Resources.pronouns.get(l1, '') == l2 or Resources.pronouns.get(l2, '') == l1:
-            return True
+        if l1 in Resources.pronouns and l2 in Resources.pronouns:
+            return Resources.pronouns[l1] == Resources.pronouns[l2]
         return False
 
     @staticmethod
@@ -66,7 +67,7 @@ class Resources(object):
     @staticmethod
     def is_num_equivalent(word1, word2):
         num1 = Resources.to_num(word1)
-        num2 = Resources.to_num(word1)
+        num2 = Resources.to_num(word2)
         if num1 and num2:
             return num1 == num2
         return False
@@ -86,3 +87,47 @@ class Resources(object):
             else:
                 num *= 1000000
         return num
+
+    @staticmethod
+    def twitter_candidates(word, model):
+        if not model in Resources.twitter_cache:
+            Resources.twitter_cache[model] = {}
+        if not word in Resources.twitter_cache[model]:
+            # adding word as hashtag
+            candidates = set(['#' + word])
+            candidates |= set(Resources.norvig_spellchecker(word))
+            candidates.add(Resources.trim_dup_letters(word))
+            for a, b in Resources.part_of_vocab(word, model):
+                candidates.add(a)
+                candidates.add(b)
+            Resources.twitter_cache[model][word] = set(filter(lambda x: x in model, candidates))
+        return Resources.twitter_cache[model][word]
+
+    @staticmethod
+    def trim_dup_letters(word):
+        new_w = word[0]
+        for c in word:
+            if not new_w[-1] == c:
+                new_w += c
+        return new_w
+
+    @staticmethod
+    def norvig_spellchecker(word, dist=2):
+        alphabet = 'abcdefghijklmnopqrstuvwxyz'
+        splits = [(word[:i], word[i:]) for i in range(len(word) + 1)]
+        deletes = [a + b[1:] for a, b in splits if b]
+        transposes = [a + b[1] + b[0] + b[2:] for a, b in splits if len(b) > 1]
+        replaces = [a + c + b[1:] for a, b in splits for c in alphabet if b]
+        inserts = [a + c + b for a, b in splits for c in alphabet]
+        return set(deletes + transposes + inserts + replaces)
+
+    @staticmethod
+    def part_of_vocab(word, dictionary):
+        if len(word) < 5:
+            return []
+        splits = [(word[:i], word[i:]) for i in range(3, len(word) - 2)]
+        parts = []
+        for a, b in splits:
+            if a in dictionary and b in dictionary:
+                parts.append((a, b))
+        return parts

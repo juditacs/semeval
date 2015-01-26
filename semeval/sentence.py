@@ -7,12 +7,24 @@ class Sentence(object):
         self.sentence = sentence
         self.tokens = tokens
         self.add_compounds()
+        self.add_acronyms()
 
     def add_compounds(self):
-        self.compounds = set()
+        self.compounds = {}
         for i, tok in enumerate(self.tokens[:-1]):
-            self.compounds.add(u'{0}{1}'.format(tok['token'], self.tokens[i + 1]['token']))
-            self.compounds.add(u'{0}-{1}'.format(tok['token'], self.tokens[i + 1]['token']))
+            self.compounds[u'{0}{1}'.format(tok['token'], self.tokens[i + 1]['token'])] = i
+            self.compounds[u'{0}-{1}'.format(tok['token'], self.tokens[i + 1]['token'])] = i
+
+    def add_acronyms(self):
+        self.head_of = {}
+        self.acronyms = defaultdict(set)
+        for i in xrange(len(self.tokens) - 1):
+            for j in range(2, 5):
+                if i + j > len(self.tokens):
+                    continue
+                words = tuple([w['token'] for w in self.tokens[i:i + j]])
+                abbr = ''.join(w[0] for w in words)
+                self.acronyms[abbr].add((i, words))
 
     def __hash__(self):
         return hash(self.sentence)

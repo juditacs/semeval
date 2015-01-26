@@ -1,5 +1,7 @@
 from argparse import ArgumentParser
+import logging
 from ConfigParser import ConfigParser
+
 from read_and_enrich import ReadAndEnrich
 from align_and_penalize import AlignAndPenalize
 from sentence import SentencePair
@@ -21,13 +23,22 @@ def read_config():
 
 def main():
     conf = read_config()
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s : " +
+        "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
+
     Resources.set_config(conf)
     reader = ReadAndEnrich(conf)
     pairs = reader.read_sentences()
     aligner = AlignAndPenalize(conf)
-    for s1, s2 in pairs:
+    for i, (s1, s2) in enumerate(pairs):
+        if i % 1000 == 0:
+            logging.info('{0} pairs'.format(i))
         pair = SentencePair(s1, s2)
         print(aligner.align(pair))
 
 if __name__ == '__main__':
-    main()
+    import cProfile
+    cProfile.run('main()', 'stats.cprofile')
+    #main()
