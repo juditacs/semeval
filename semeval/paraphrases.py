@@ -1,7 +1,6 @@
 from argparse import ArgumentParser
 import logging
 from ConfigParser import ConfigParser
-import os
 
 from read_and_enrich import ReadAndEnrich
 from align_and_penalize import AlignAndPenalize
@@ -17,8 +16,7 @@ def parse_args():
 
 def read_config():
     args = parse_args()
-    conf = ConfigParser(
-        {"4langpath": os.environ["FOURLANGPATH"]})
+    conf = ConfigParser()
     conf.read(args.conf)
     return conf
 
