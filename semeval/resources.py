@@ -14,8 +14,11 @@ class Resources(object):
     adverb_threshold = math.log(500000)
 
     punctuation = set(string.punctuation)
-    punct_re = re.compile("\W+", re.UNICODE)
+    punct_re = re.compile("\W+")
     num_re = re.compile(r'^([0-9][0-9.,]*)([mMkK]?)$', re.UNICODE)
+    question_starters = set([
+        'is', 'does', 'do', 'what', 'where', 'how', 'why',
+    ])
     pronouns = {
         'me': 'i', 'my': 'i',
         'your': 'you',
