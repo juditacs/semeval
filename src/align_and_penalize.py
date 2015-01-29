@@ -1246,7 +1246,7 @@ def get_processer(args, sim_type='', vectors_fn=None):
     if sim_type == "machine_only":
         sts_wrapper = STSWrapper()
         machine_wrapper = MachineWrapper(
-            'configs/machine_res.cfg', include_longman=True, batch=batch)
+            'configs/machine.cfg', include_longman=True, batch=batch)
         machine_sim = MachineSenSimilarity(machine_wrapper)
         return lambda l: machine_sim.process_line(
             l, parser=sts_wrapper.parse_sts_line,
@@ -1271,7 +1271,7 @@ def get_processer(args, sim_type='', vectors_fn=None):
 
     elif sim_type == 'machine':
         machine_wrapper = MachineWrapper(
-            'configs/machine_res.cfg', include_longman=True, batch=batch)
+            'configs/machine.cfg', include_longman=True, batch=batch)
         machine_sim = MachineWordSimilarity(machine_wrapper)
         sts_wrapper = STSWrapper(sim_function=machine_sim.word_similarity,
                                  wn_cache=wn_cache,
@@ -1280,7 +1280,7 @@ def get_processer(args, sim_type='', vectors_fn=None):
     elif sim_type == 'hybrid':
         lsa_wrapper = LSAWrapper()
         machine_wrapper = MachineWrapper(
-            'configs/machine_res.cfg', include_longman=True, batch=batch)
+            'configs/machine.cfg', include_longman=True, batch=batch)
 
         machine_sim = MachineWordSimilarity(machine_wrapper)
 
