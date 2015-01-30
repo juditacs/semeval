@@ -9,7 +9,7 @@ Task 1: https://github.com/juditacs/semeval/tree/submitted
 
 Task 2: https://github.com/juditacs/semeval/tree/15863ba5bc7f857291322c707a899c7c802a7c88
 
-If you'd also like to reproduce the machine similarity component as it was athe time of the submission, you'll need the following revision of the pymachine repository:
+If you'd also like to reproduce the machine similarity component as it was at the time of the submission, you'll need the following revision of the pymachine repository:
 
 https://github.com/kornai/pymachine/tree/3d936067e775fc8aa56c06388eb328ef2c6efe75
 
