@@ -149,8 +149,11 @@ class Enricher(object):
     def tag_tokens(self, tokens):
         words = [i['token'] for i in tokens]
         pos_tags = self.hunpos.tag(words)
-        ne = nltk.ne_chunk(pos_tags)
-        ner_tags = self.get_ner_tags(ne)
+        if self.conf.getboolean('penalty', 'penalize_named_entities'):
+            ne = nltk.ne_chunk(pos_tags)
+            ner_tags = self.get_ner_tags(ne)
+        else:
+            ner_tags = ['' for _ in range(len(tokens))]
         for i, tag in enumerate(pos_tags):
             tokens[i]['pos'] = tag
             tokens[i]['ner'] = ner_tags[i]
