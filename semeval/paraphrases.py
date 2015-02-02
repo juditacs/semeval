@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+from sys import stdin
 import logging
 from ConfigParser import ConfigParser
 
@@ -6,6 +7,7 @@ from read_and_enrich import ReadAndEnrich
 from align_and_penalize import AlignAndPenalize
 from sentence import SentencePair
 from resources import Resources
+from regression import Regression
 
 
 def parse_args():
@@ -30,13 +32,18 @@ def main():
 
     Resources.set_config(conf)
     reader = ReadAndEnrich(conf)
-    pairs = reader.read_sentences()
     aligner = AlignAndPenalize(conf)
-    for i, (s1, s2) in enumerate(pairs):
-        if i % 1000 == 0:
-            logging.info('{0} pairs'.format(i))
-        pair = SentencePair(s1, s2)
-        print(aligner.align(pair))
+    if conf.get('final_score', 'mode') == 'regression':
+        r = Regression(conf, reader, aligner)
+        r.regression()
+        r.print_results()
+    else:
+        pairs = reader.read_sentences(stdin)
+        for i, (s1, s2) in enumerate(pairs):
+            if i % 1000 == 0:
+                logging.info('{0} pairs'.format(i))
+            pair = SentencePair(s1, s2)
+            print(aligner.align(pair))
 
 if __name__ == '__main__':
     import cProfile
