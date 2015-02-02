@@ -1,4 +1,3 @@
-from sys import stdin
 import os
 from HTMLParser import HTMLParser
 from ConfigParser import NoOptionError
@@ -16,16 +15,19 @@ class ReadAndEnrich(object):
         self.enricher = Enricher(conf)
         self.pairs = []
 
-    def read_sentences(self):
-        for sen1, sen2, tags1, tags2 in self.read_lines():
+    def read_sentences(self, stream):
+        for sen1, sen2, tags1, tags2 in self.read_lines(stream):
             s1 = self.enricher.add_sentence(sen1, tags1)
             s2 = self.enricher.add_sentence(sen2, tags2)
             self.pairs.append((s1, s2))
         return self.pairs
 
-    def read_lines(self):
+    def clear_pairs(self):
+        self.pairs = []
+
+    def read_lines(self, stream):
         enc = self.conf.get('global', 'encoding')
-        for l in stdin:
+        for l in stream:
             fs = l.decode(enc).strip().split('\t')
             if len(fs) == 2:
                 sen1 = fs[0]
