@@ -12,34 +12,27 @@ class AlignAndPenalize(object):
 
     def __init__(self, conf):
         self.conf = conf
-        self.init_similarities()
         self.fallback_similarity = None
+        self.init_similarities()
         self._antonym_cache = {}
 
     def init_similarities(self):
         self.similarities = {}
         for section in self.conf.sections():
-            if not section.startswith('similarity_'):
-                if section == 'fallback_similarity':
-                    self.fallback_similarity = similarity.get_similarity(self.conf, section)
-                continue
-            sim_name = section.lstrip('similarity_')
-            self.similarities[sim_name] = similarity.get_similarity(self.conf, section)
+            if section.startswith('similarity_'):
+                sim_name = section[11:]
+                self.similarities[sim_name] = similarity.get_similarity(self.conf, section)
+            elif 'fallback_' in section:
+                self.fallback_similarity = similarity.get_similarity(self.conf, section)
 
     def align(self, pair):
         self.align_src_tgt(pair.match1, pair.sen1, pair.sen2)
         self.align_src_tgt(pair.match2, pair.sen2, pair.sen1)
         # update with context-based info
         self.update_with_context(pair)
-#        print('MATCH1')
-#        for i, (sc, j) in enumerate(pair.match1['dice4']):
-#            print(u'{0} -> {1}: {2}'.format(pair.sen1.tokens[i]['token'], pair.sen2.tokens[j]['token'], sc).encode('utf8'))
-#        print('MATCH2')
-#        for i, (sc, j) in enumerate(pair.match2['dice4']):
-#            print(u'{0} -> {1}: {2}'.format(pair.sen2.tokens[i]['token'], pair.sen1.tokens[j]['token'], sc).encode('utf8'))
-#        print pair.match1
-        self.T = self.sentence_similarity(pair)
-        final_score = self.compute_final_score()
+        # comput P and T scores
+        self.sentence_similarity(pair)
+        final_score = self.compute_final_score(pair)
         return final_score
 
     def compute_penalty(self, pair):
@@ -83,7 +76,9 @@ class AlignAndPenalize(object):
             if tok['pos'].lower() in past:
                 is_past2 = True
         if is_past1 == is_past2:
+            pair.features['PE'] = 0
             return defaultdict(lambda: 0)
+        pair.features['PE'] = 1.0 / (len(pair.sen1.tokens) + len(pair.sen2.tokens))
         return defaultdict(lambda: 1.0 / (len(pair.sen1.tokens) + len(pair.sen2.tokens)))
 
     def penalize_antonyms(self, pair):
@@ -97,6 +92,8 @@ class AlignAndPenalize(object):
             for i, (sc, t2) in enumerate(match):
                 if self.is_antonym(pair.sen2.tokens[i]['token'], pair.sen1.tokens[t2]['token']):
                     b1[typ] += sc + 0.5
+        pair.features['P1B'] = b1
+        pair.features['P2B'] = b2
         return b1, b2
 
     def penalize_low_sim(self, pair):
@@ -105,30 +102,37 @@ class AlignAndPenalize(object):
         for typ, match in pair.match1.iteritems():
             p1 = sum(m[0] for m in match if m[0] < th) / len(pair.sen1.tokens)
             p2 = sum(m[0] for m in pair.match2[typ] if m[0] < th) / len(pair.sen2.tokens)
-            PA[typ] = p1 + p2
+            PA[typ] = (p1 + p2) / 2
+            pair.features['P1A_' + typ] = p1
+            pair.features['P2A_' + typ] = p2
         return PA
 
-    def compute_final_score(self):
+    def compute_final_score(self, pair):
         mode = self.conf.get('final_score', 'mode')
         if mode == 'average':
-            score = sum((s[0] + s[1]) for s in self.T.itervalues()) / len(self.T)
+            score = sum((s[0] + s[1]) for s in pair.T.itervalues()) / len(pair.T)
         elif mode == 'max':
-            score = max(s[0] + s[1] for s in self.T.itervalues())
+            score = max(s[0] + s[1] for s in pair.T.itervalues())
         elif mode == 'min':
-            score = min(s[0] + s[1] for s in self.T.itervalues())
+            score = min(s[0] + s[1] for s in pair.T.itervalues())
         elif mode.startswith('similarity_'):
-            typ = mode.lstrip('similarity_')
-            score = (self.T[typ][0] + self.T[typ][1])
+            typ = mode[11:]
+            score = (pair.T[typ][0] + pair.T[typ][1])
+        elif mode == 'regression':
+            for typ, (sc1, sc2) in pair.T.iteritems():
+                pair.features[typ] = sc1 + sc2
+            return None
         return score
 
     def sentence_similarity(self, pair):
-        sum_scores = defaultdict(lambda: [0.0, 0.0])
-        self.P = self.compute_penalty(pair)
+        pair.T = {}
+        #self.T = defaultdict(lambda: [0.0, 0.0])
+        pair.P = self.compute_penalty(pair)
         for typ, scores in pair.match1.iteritems():
-            sum_scores[typ][0] = sum(s[0] for s in scores) / float(2 * len(scores))
+            pair.T[typ] = [0, 0]
+            pair.T[typ][0] = sum(s[0] for s in scores) / float(2 * len(scores)) - pair.P[typ] / 2
         for typ, scores in pair.match2.iteritems():
-            sum_scores[typ][1] = sum(s[0] for s in scores) / float(2 * len(scores))
-        return sum_scores
+            pair.T[typ][1] = sum(s[0] for s in scores) / float(2 * len(scores)) - pair.P[typ] / 2
 
     def align_src_tgt(self, match, sen1, sen2):
         for typ in self.similarities.iterkeys():
@@ -195,6 +199,7 @@ class AlignAndPenalize(object):
         for w1 in word1['senses']:
             for w2 in word2['senses']:
                 s = self.word_sim(w1, w2, simtype)
+                #print(u'SENSES sim: {0}->{1} -- {2}->{3}: {4}'.format(word1['token'], w1, word2['token'], w2, s).encode('utf8'))
                 if s > max_sim:
                     max_sim = s
         return max_sim
@@ -209,10 +214,13 @@ class AlignAndPenalize(object):
             return 1
         sim = self.similarities[simtype].word_sim(w1, w2)
         if sim is None and self.fallback_similarity:
-            return self.fallback_similarity.word_sim(w1, w2)
+            sim = self.fallback_similarity.word_sim(w1, w2)
+        elif sim is None:
+            sim = 0.0
         return sim
 
     def antonym_cache(self, key):
+        #TODO use wordnet_cache
         if not key in self._antonym_cache:
             self._antonym_cache[key] = set()
             for synset in wordnet.synsets(key):
@@ -257,10 +265,16 @@ class AlignAndPenalize(object):
             return defaultdict(float)
         match1, missing1 = self.find_ne_in_other(ne1, ne2)
         match2, missing2 = self.find_ne_in_other(ne2, ne1)
+        pair.features['match1'] = len(match1)
+        pair.features['match2'] = len(match2)
+        pair.features['missing1'] = len(missing1)
+        pair.features['missing2'] = len(missing2)
         if not match1 and not match2:
+            pair.features['PC'] = 1
             return defaultdict(lambda: 1)
         diff1 = float(len(match1 - match2)) / len(match1 | match2)
         diff2 = float(len(match2 - match1)) / len(match1 | match2)
+        pair.features['PC'] = 1 - max((diff1, diff2))
         return defaultdict(lambda: 1 - max([diff1, diff2]))
 
     def collect_entities(self, pair):
