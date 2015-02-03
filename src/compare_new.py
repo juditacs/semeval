@@ -27,7 +27,7 @@ def main():
     sent = read_sentences(sen_f)
     for i, old_sc in enumerate(old_scores):
         if not old_sc == new_scores[i]:
-            print(u'{0}\t{1}\t{2}\t{3}\t{4}'.format(i, old_sc, new_scores[i], sent[i][0], sent[i][1]).encode('utf-8'))
+            print(u'{0}\t{1}\t{2}\t{3}\t{4}'.format(i + 1, old_sc, new_scores[i], sent[i][0], sent[i][1]).encode('utf-8'))
 
 if __name__ == '__main__':
     main()
