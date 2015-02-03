@@ -35,7 +35,7 @@ or to use the machine similarity component
 ## Regression used for Twitter data
 
 Specifying regression mode in the final\_score section uses a regression (see `configs/twimash.cfg`).
-This mode needs to no the location of the train and test files, which are specified in the regression section:
+This mode needs to know the location of the train and test files, which are specified in the regression section:
 
     [regression]
     train: data/train.data
