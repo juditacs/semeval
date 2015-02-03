@@ -155,8 +155,9 @@ class WordnetCache(object):
                 return 1
             if WordnetCache.is_two_link_similar_to(adj1, adj2):
                 return 2
-        if WordnetCache.is_derivationally_related(s1, s2):
-            return 1
+        #TODO decide whether this should go to config or delete it
+        #if WordnetCache.is_derivationally_related(s1, s2):
+            #return 1
         if WordnetCache.in_glosses(word1, word2, s1, s2):
             return 2
         return None

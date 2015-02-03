@@ -34,11 +34,20 @@ or to use the machine similarity component
 
 ## Regression used for Twitter data
 
-     python src/twitter_regression.py data/filt/train_feat data/filt/dev_feat data/filt/labels_train data/filt/labels_dev
+Specifying regression mode in the final\_score section uses a regression (see `configs/twimash.cfg`).
+This mode needs to know the location of the train and test files, which are specified in the regression section:
 
+    [regression]
+    train: data/train.data
+    train_labels: data/train.labels
+    test: data/test.data
+    gold: data/test.label
+    binary_labels: true
+    outfile: data/predicted.labels
 
-This script runs a regression using the train features and labels specified in argv[1] and argv[3] and test them on the dev.
-I also implemented an SVM classifier, you need to replace the appropriate lines in the main function.
+Specifying a gold file is optional, the rest of the options are mandatory.
+If you specify a gold file, precision, recall and F-score are computed and printed to stdout.
+
 
 ## Regression used for Task 2 STS data
 

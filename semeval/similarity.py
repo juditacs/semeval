@@ -1,5 +1,7 @@
 import logging
+import random
 import math
+from collections import defaultdict
 from gensim.models import Word2Vec
 
 from resources import Resources
@@ -17,6 +19,15 @@ def get_similarity(config, section):
     if sim_type == 'machine':
         config_file = config.get(section, 'config_file')
         return MachineSimilarity(config_file)
+    if sim_type == 'synonyms':
+        syn_fn = config.get(section, 'synonyms_file')
+        tolower = config.getboolean('global', 'lower')
+        return SynonymSimilarity(syn_fn, tolower)
+    if sim_type == 'random':
+        return RandomSimilarity()
+    if sim_type == 'none':
+        return NoneSimilarity()
+    raise Exception('Unknown similarity: {0}'.format(section))
 
 
 class BaseSimilarity(object):
@@ -42,7 +53,6 @@ class LSASimilarity(BaseSimilarity):
             raise Exception('Unknown LSA model format')
         logging.info('Model loaded: {0}'.format(self.model_fn))
         self.sim_cache = {}
-        self.lsa_sim_cache = {}
 
     def word_sim(self, word1, word2):
         if (word1, word2) in self.sim_cache:
@@ -50,35 +60,28 @@ class LSASimilarity(BaseSimilarity):
         cand1 = self.get_spell_variations(word1)
         cand2 = self.get_spell_variations(word2)
         max_pair = (word1, word2)
-        max_sim = 0.0
+        max_sim = None
         for c1 in cand1:
             for c2 in cand2:
                 if c1 in self.model and c2 in self.model:
                     s = self.model.similarity(c1, c2)
                     #logging.info(u'Calling similarity: \t{0}\t{1}'.format(c1, c2).encode('utf8'))
-                    if s > max_sim:
+                    if not max_sim or s > max_sim:
                         max_pair = (word1, word2)
                         max_sim = s
-        if max_sim > 0.1:
-            if self.wordnet_boost:
-                D = Wordnet.get_boost(max_pair[0], max_pair[1])
-                if not D is None:
-                    max_sim += 0.5 * math.exp(-0.25 * D)
-        else:
-            max_sim = 0.0
+        if max_sim is not None:
+            if max_sim > 0.1:
+                if self.wordnet_boost:
+                    D = Wordnet.get_boost(max_pair[0], max_pair[1])
+                    if not D is None:
+                        max_sim += 0.5 * math.exp(-0.25 * D)
+            else:
+                max_sim = 0.0
+        if max_sim is not None and max_sim > 1.0:
+            max_sim = 1.0
         self.sim_cache[(word1, word2)] = max_sim
         self.sim_cache[(word2, word1)] = max_sim
         return max_sim
-
-    def lsa_sim(self, word1, word2):
-        if not (word1, word2) in self.lsa_sim_cache:
-            try:
-                s = self.model.similarity(word1, word2)
-            except KeyError:
-                s = None
-            self.lsa_sim_cache[(word1, word2)] = s
-            self.lsa_sim_cache[(word2, word1)] = s
-        return self.lsa_sim_cache[(word1, word2)]
 
     def get_spell_variations(self, word):
         variations = set([word])
@@ -123,6 +126,7 @@ class NGramSimilarity(BaseSimilarity):
         self.word_cache[(word1, word2)] = sim
         return sim
 
+
 class MachineSimilarity(BaseSimilarity):
 
     def __init__(self, config_file):
@@ -134,3 +138,43 @@ class MachineSimilarity(BaseSimilarity):
 
     def word_sim(self, word1, word2):
         return self.machine_sim.word_similarity(word1, word2, -1, -1)
+
+
+class SynonymSimilarity(BaseSimilarity):
+
+    def __init__(self, syn_fn, tolower=False):
+        self.synonyms = defaultdict(set)
+        if syn_fn.endswith('.gz') or syn_fn.endswith('.gzip'):
+            import gzip
+            stream = gzip.open(syn_fn)
+        else:
+            stream = open(syn_fn)
+        for l in stream:
+            if tolower:
+                fs = l.decode('utf8').lower().strip().split('\t')
+            else:
+                fs = l.decode('utf8').strip().split('\t')
+            if not fs[0] == 'en':
+                continue
+            self.synonyms[fs[1]].add(fs[3])
+            self.synonyms[fs[3]].add(fs[1])
+        logging.info('Synonyms read from: {0}'.format(syn_fn))
+
+    def word_sim(self, word1, word2):
+        if not word1 in self.synonyms or not word2 in self.synonyms:
+            return None
+        if word2 in self.synonyms[word1]:
+            return 1.0
+        return 0.0
+
+
+class RandomSimilarity(BaseSimilarity):
+
+    def word_sim(self, word1, word2):
+        return random.random()
+
+
+class NoneSimilarity(BaseSimilarity):
+
+    def word_sim(self, word1, word2):
+        return None

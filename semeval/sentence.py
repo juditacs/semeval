@@ -44,3 +44,7 @@ class SentencePair(object):
         self.sen2 = sen2
         self.match1 = defaultdict(list)
         self.match2 = defaultdict(list)
+        self.features = defaultdict(float)
+
+    def __str__(self):
+        return '{0}\n{1}\n'.format(self.sen1, self.sen2)
