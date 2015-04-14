@@ -17,8 +17,7 @@ def get_similarity(config, section):
     if sim_type == 'lsa':
         return LSASimilarity(section, config)
     if sim_type == 'machine':
-        config_file = config.get(section, 'config_file')
-        return MachineSimilarity(config_file)
+        return MachineSimilarity(config)
     if sim_type == 'synonyms':
         syn_fn = config.get(section, 'synonyms_file')
         tolower = config.getboolean('global', 'lower')
@@ -33,7 +32,7 @@ def get_similarity(config, section):
 class BaseSimilarity(object):
 
     def word_sim(self, word1, word2):
-        logging.warning('The BaseSimilarity word_sim method was called. Did you forget to implement it in the derived class?')
+        logging.warning('The BaseSimilarity word_sim method was called. Did you forget to implement it in the derived class?')  # nopep8
         return 0.0
 
 
@@ -46,7 +45,8 @@ class LSASimilarity(BaseSimilarity):
         self.use_twitter_norm = config.getboolean('alignment', 'twitter_norm')
         logging.info('Loading model: {0}'.format(self.model_fn))
         if self.model_type == 'word2vec':
-            self.model = Word2Vec.load_word2vec_format(self.model_fn, binary=False)
+            self.model = Word2Vec.load_word2vec_format(
+                self.model_fn, binary=False)
         elif self.model_type == 'gensim':
             self.model = Word2Vec.load(self.model_fn)
         else:
@@ -65,7 +65,9 @@ class LSASimilarity(BaseSimilarity):
             for c2 in cand2:
                 if c1 in self.model and c2 in self.model:
                     s = self.model.similarity(c1, c2)
-                    #logging.info(u'Calling similarity: \t{0}\t{1}'.format(c1, c2).encode('utf8'))
+                    # logging.info(
+                    #     u'Calling similarity: \t{0}\t{1}'.format(
+                    #         c1, c2).encode('utf8'))
                     if not max_sim or s > max_sim:
                         max_pair = (word1, word2)
                         max_sim = s
@@ -73,7 +75,7 @@ class LSASimilarity(BaseSimilarity):
             if max_sim > 0.1:
                 if self.wordnet_boost:
                     D = Wordnet.get_boost(max_pair[0], max_pair[1])
-                    if not D is None:
+                    if D is not None:
                         max_sim += 0.5 * math.exp(-0.25 * D)
             else:
                 max_sim = 0.0
@@ -129,15 +131,12 @@ class NGramSimilarity(BaseSimilarity):
 
 class MachineSimilarity(BaseSimilarity):
 
-    def __init__(self, config_file):
-        from pymachine.wrapper import Wrapper as MachineWrapper
-        from pymachine.similarity import WordSimilarity as MachineWordSimilarity  # nopep8
-        self.wrapper = MachineWrapper(
-            config_file, include_longman=True, batch=True)
-        self.machine_sim = MachineWordSimilarity(self.wrapper)
+    def __init__(self, cfg):
+        from fourlang.similarity import WordSimilarity as FourlangWordSimilarity  # nopep8
+        self.fourlang_sim = FourlangWordSimilarity(cfg)
 
     def word_sim(self, word1, word2):
-        return self.machine_sim.word_similarity(word1, word2, -1, -1)
+        return self.fourlang_sim.word_similarity(word1, word2, -1, -1)
 
 
 class SynonymSimilarity(BaseSimilarity):
@@ -161,7 +160,7 @@ class SynonymSimilarity(BaseSimilarity):
         logging.info('Synonyms read from: {0}'.format(syn_fn))
 
     def word_sim(self, word1, word2):
-        if not word1 in self.synonyms or not word2 in self.synonyms:
+        if word1 not in self.synonyms or word2 not in self.synonyms:
             return None
         if word2 in self.synonyms[word1]:
             return 1.0
