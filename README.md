@@ -15,9 +15,19 @@ https://github.com/kornai/pymachine/tree/3d936067e775fc8aa56c06388eb328ef2c6efe7
 
 
 # Dependencies
-Use pip to install the numpy and scipy packages. To use the machine similarity component, you need to download and install the pymachine module from https://github.com/kornai/pymachine
+Use pip to install the numpy package.
 
-__A standard python module that takes care of its dependencies is on its way__
+```
+pip install numpy
+```
+
+Then run
+```
+python setup.py install
+```
+(use virtualenv if you do not have root privileges)
+
+To configure the 4lang module (for the machine similarity component), edit the configuration file `configs/sts\_machine.cfg` based on the instructions in the [4lang README](https://github.com/kornai/4lang/blob/master/README.md#the-config-file)
 
 # Usage
 
