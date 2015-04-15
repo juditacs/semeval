@@ -26,7 +26,7 @@ def read_config():
 def main():
     conf = read_config()
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format="%(asctime)s : " +
         "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
 
@@ -46,6 +46,6 @@ def main():
             print(aligner.align(pair))
 
 if __name__ == '__main__':
-    import cProfile
-    cProfile.run('main()', 'stats.cprofile')
-    #main()
+    #import cProfile
+    #cProfile.run('main()', 'stats.cprofile')
+    main()

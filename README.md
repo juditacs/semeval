@@ -27,7 +27,7 @@ python setup.py install
 ```
 (use virtualenv if you do not have root privileges)
 
-To configure the 4lang module (for the machine similarity component), edit the configuration file `configs/sts\_machine.cfg` based on the instructions in the [4lang README](https://github.com/kornai/4lang/blob/master/README.md#the-config-file)
+The machine similarity component also requires the 4lang module. To download and install it, follow [these instructions](https://github.com/kornai/4lang/blob/master/README.md). Then configure it by editing the configuration file `configs/sts\_machine.cfg` based on the instructions in the [4lang README](https://github.com/kornai/4lang/blob/master/README.md#the-config-file)
 
 # Usage
 

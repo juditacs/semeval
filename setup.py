@@ -19,7 +19,5 @@ setup(
     package_dir={'': '.'},
     packages=['semeval'],
 
-    dependency_links=[
-        "https://github.com/kornai/4lang/tarball/1.0#egg=fourlang"],
-    install_requires=["fourlang", "gensim"],
+    install_requires=["gensim"],
 )
