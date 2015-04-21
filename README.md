@@ -30,11 +30,18 @@ The machine similarity component also requires the 4lang module. To download and
 
 The STS system can be invoked from the repo's base directory using:
 
-    cat sts_test.txt | python semeval/paraphrases.py -c configs/twitter.cfg > out
+```
+    cat sts_test.txt | python semeval/paraphrases.py -c configs/sts.cfg > out
+    cat twitter_test.txt | python semeval/paraphrases.py -c configs/twitter.cfg > out
+```
 
-or to use the machine similarity component
+These test files follow the format of the Semeval 2015 Tasks 1 and 2, respectively.
 
-    cat twitter_test_data | python semeval/paraphrases.py -c configs/sts_machine.cfg > out
+To use the machine similarity component, run
+
+```
+cat sts_test.txt | python semeval/paraphrases.py -c configs/sts_machine.cfg > out
+```
 
 
 # Regression

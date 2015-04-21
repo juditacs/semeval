@@ -10,6 +10,11 @@ class Resources(object):
     def set_config(conf):
         Resources.conf = conf
 
+    @staticmethod
+    def ensure_nltk_packages():
+        for package in ('stopwords', 'punkt', 'wordnet'):
+            nltk.download(package)
+
     """ Thresholds """
     adverb_threshold = math.log(500000)
 
@@ -32,7 +37,8 @@ class Resources(object):
         "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10
     }
 
-    stopwords = set(nltk.corpus.stopwords.words('english')) - set(pronouns.iterkeys())
+    stopwords = set(
+        nltk.corpus.stopwords.words('english')) - set(pronouns.iterkeys())
     twitter_cache = {}
     _global_freqs = None
     _adverb_cache = {}
@@ -62,8 +68,10 @@ class Resources(object):
 
     @staticmethod
     def is_frequent_adverb(word, pos):
-        if not word in Resources._adverb_cache:
-            ans = (pos is not None and pos[:2] == 'RB' and Resources.get_global_freq(word) > Resources.adverb_threshold)
+        if word not in Resources._adverb_cache:
+            ans = (
+                pos is not None and pos[:2] == 'RB' and
+                Resources.get_global_freq(word) > Resources.adverb_threshold)
             Resources._adverb_cache[word] = ans
         return Resources._adverb_cache[word]
 
@@ -93,9 +101,9 @@ class Resources(object):
 
     @staticmethod
     def twitter_candidates(word, model):
-        if not model in Resources.twitter_cache:
+        if model not in Resources.twitter_cache:
             Resources.twitter_cache[model] = {}
-        if not word in Resources.twitter_cache[model]:
+        if word not in Resources.twitter_cache[model]:
             # adding word as hashtag
             candidates = set(['#' + word])
             candidates |= set(Resources.norvig_spellchecker(word))
@@ -103,7 +111,8 @@ class Resources(object):
             for a, b in Resources.part_of_vocab(word, model):
                 candidates.add(a)
                 candidates.add(b)
-            Resources.twitter_cache[model][word] = set(filter(lambda x: x in model, candidates))
+            Resources.twitter_cache[model][word] = set(
+                filter(lambda x: x in model, candidates))
         return Resources.twitter_cache[model][word]
 
     @staticmethod

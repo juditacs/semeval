@@ -58,11 +58,11 @@ class Enricher(object):
 
     def init_hunpos(self):
         try:
-            hunmorph_dir = self.conf.get('global', 'hunmorph_dir')
+            hunpos_dir = self.conf.get('global', 'hunpos_dir')
         except NoOptionError:
-            hunmorph_dir = '/home/recski/projects/hundisambig_compact'
-        hunpos_binary = os.path.join(hunmorph_dir, 'hunpos-tag')
-        hunpos_model = os.path.join(hunmorph_dir, 'en_wsj.model')
+            hunpos_dir = '/home/recski/projects/hundisambig_compact'
+        hunpos_binary = os.path.join(hunpos_dir, 'hunpos-tag')
+        hunpos_model = os.path.join(hunpos_dir, 'en_wsj.model')
         return nltk.tag.HunposTagger(hunpos_model, hunpos_binary)
 
     def add_sentence(self, sentence, tags):

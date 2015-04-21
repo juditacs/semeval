@@ -19,5 +19,5 @@ setup(
     package_dir={'': '.'},
     packages=['semeval'],
 
-    install_requires=["gensim"],
+   install_requires=["gensim", "nltk"],
 )
