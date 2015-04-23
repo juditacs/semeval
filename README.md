@@ -15,19 +15,33 @@ https://github.com/kornai/pymachine/tree/3d936067e775fc8aa56c06388eb328ef2c6efe7
 
 
 # Dependencies
-Use pip to install the numpy and scipy packages. To use the machine similarity component, you need to download and install the pymachine module from https://github.com/kornai/pymachine
+First you need to install the SciPy stack on your machine by following instructions specific to your system on [this page](http://www.scipy.org/install.html)
 
-__A standard python module that takes care of its dependencies is on its way__
+Then run
+```
+sudo python setup.py install
+```
+
+Our pipeline relies on the hunpos tool for part-of-speech tagging, which can be downloaded from [this page](https://code.google.com/p/hunpos/). After compiling, place the binary `hunpos-tag` and the English model `en_wsj.model` in the directory semeval/hunpos (or change the value of `hunpos_dir` in the configuration file to point to a different location).
+
+The machine similarity component also requires the 4lang module. To download and install it, follow [these instructions](https://github.com/kornai/4lang/blob/master/README.md). Then configure it by editing the configuration file `configs/sts\_machine.cfg` based on the instructions in the [4lang README](https://github.com/kornai/4lang/blob/master/README.md#the-config-file)
 
 # Usage
 
 The STS system can be invoked from the repo's base directory using:
 
-    cat twitter_test_data | python semeval/paraphrases.py -c configs/twitter.cfg > out
+```
+    cat sts_test.txt | python semeval/paraphrases.py -c configs/sts.cfg > out
+    cat twitter_test.txt | python semeval/paraphrases.py -c configs/twitter.cfg > out
+```
 
-or to use the machine similarity component
+These test files follow the format of the Semeval 2015 Tasks 1 and 2, respectively.
 
-    cat twitter_test_data | python semeval/paraphrases.py -c configs/sts_machine.cfg > out
+To use the machine similarity component, run
+
+```
+cat sts_test.txt | python semeval/paraphrases.py -c configs/sts_machine.cfg > out
+```
 
 
 # Regression

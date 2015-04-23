@@ -12,7 +12,8 @@ from regression import Regression
 
 def parse_args():
     p = ArgumentParser()
-    p.add_argument('-c', '--conf', help='config file', default='config', type=str)
+    p.add_argument(
+        '-c', '--conf', help='config file', default='config', type=str)
     return p.parse_args()
 
 
@@ -26,11 +27,12 @@ def read_config():
 def main():
     conf = read_config()
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format="%(asctime)s : " +
         "%(module)s (%(lineno)s) - %(levelname)s - %(message)s")
 
     Resources.set_config(conf)
+    Resources.ensure_nltk_packages()
     reader = ReadAndEnrich(conf)
     aligner = AlignAndPenalize(conf)
     if conf.get('final_score', 'mode') == 'regression':
@@ -46,6 +48,6 @@ def main():
             print(aligner.align(pair))
 
 if __name__ == '__main__':
-    import cProfile
-    cProfile.run('main()', 'stats.cprofile')
-    #main()
+    # import cProfile
+    # cProfile.run('main()', 'stats.cprofile')
+    main()
