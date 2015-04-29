@@ -13,7 +13,7 @@ class Resources(object):
     @staticmethod
     def ensure_nltk_packages():
         for package in ('stopwords', 'punkt', 'wordnet'):
-            nltk.download(package)
+            nltk.download(package, quiet=True)
 
     """ Thresholds """
     adverb_threshold = math.log(500000)
