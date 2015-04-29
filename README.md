@@ -22,7 +22,7 @@ Then run
 sudo python setup.py install
 ```
 
-Our pipeline relies on the hunpos tool for part-of-speech tagging, which can be downloaded from [this page](https://code.google.com/p/hunpos/). All you need to do is download and place the binary `hunpos-tag` and the English model `en_wsj.model` in the directory semeval/hunpos (or change the value of `hunpos_dir` in the configuration file to point to a different location).
+Our pipeline relies on the hunpos tool for part-of-speech tagging, which can be downloaded from [this page](https://code.google.com/p/hunpos/downloads/list). All you need to do is download and place the binary `hunpos-tag` and the English model `en_wsj.model` in the directory semeval/hunpos (or change the value of `hunpos_dir` in the configuration file to point to a different location).
 
 The machine similarity component also requires the 4lang module. To download and install it, follow [these instructions](https://github.com/kornai/4lang/blob/master/README.md). Then configure it by editing the configuration file `configs/sts\_machine.cfg` based on the instructions in the [4lang README](https://github.com/kornai/4lang/blob/master/README.md#the-config-file)
 
