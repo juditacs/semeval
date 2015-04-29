@@ -3,15 +3,7 @@ semeval
 
 Semantic Textual Similarity (STS) system created by the MathLingBudapest team to participate in Tasks 1 and 2 of Semeval2015
 
-_NOTE: this code and its dependency pymachine are under constant development. To run the version of the code that was used to create the MathLingBudapest team's submissions (although many bugs have been fixed since), use the following revisions:_
 
-Task 1: https://github.com/juditacs/semeval/tree/submitted
-
-Task 2: https://github.com/juditacs/semeval/tree/15863ba5bc7f857291322c707a899c7c802a7c88
-
-If you'd also like to reproduce the machine similarity component as it was at the time of the submission, you'll need the following revision of the pymachine repository:
-
-https://github.com/kornai/pymachine/tree/3d936067e775fc8aa56c06388eb328ef2c6efe75
 
 
 # Dependencies
@@ -74,5 +66,34 @@ sample uses of regression.py:
      for f in data/2014-test/nosim_4gr_d/STS.input.*; do topic=`basename $f | cut -d'.' -f3`; echo $topic; python scripts/regression.py regression_predict all.model data/2014-test/nosim_4gr_d/STS.input.$topic.txt.out data/2014-test/lsa_sim_bp/STS.input.$topic.txt.out data/2014-test/machine_sim_nodes2/STS.input.$topic.txt.out > data/2014-test/regr/STS.input.$topic.txt.out; done
 
 
-For certain scripts to work, you may want to set the environment variables SEMEVAL_DATA and STANFORD_PARSER.
-On nessi6, set_env_nessi6.sh does this for you.
+##Reverting to the Semeval-2015 submission version
+This code and its dependencies are under constant development. To run the version of the code that was used to create the MathLingBudapest team's submissions (although many bugs have been fixed since), use the following revisions:_
+
+Task 1: https://github.com/juditacs/semeval/tree/submitted
+
+Task 2: https://github.com/juditacs/semeval/tree/15863ba5bc7f857291322c707a899c7c802a7c88
+
+If you'd also like to reproduce the machine similarity component as it was at the time of the submission, you'll need the following revision of the pymachine repository:
+
+https://github.com/kornai/pymachine/tree/3d936067e775fc8aa56c06388eb328ef2c6efe75
+
+## Contact
+This repository is maintained by Judit Ács and Gábor Recski. Questions, suggestions, bug reports, etc. are very welcome and can be sent by email to recski at mokk bme hu.
+
+
+### Publications
+If you use the `semeval` module, please cite:
+
+```
+@InProceedings{Recski:2015a,
+  author    = {Recski, G\'{a}bor  and  \'{A}cs, Judit},
+  title     = {MathLingBudapest: Concept Networks for Semantic Similarity},
+  booktitle = {Proceedings of the 9th International Workshop on Semantic Evaluation (SemEval 2015)},
+  month     = {June},
+  year      = {2015},
+  address   = {Denver, Colorado},
+  publisher = {Association for Computational Linguistics},
+  pages     = {543--547},
+  url       = {http://www.aclweb.org/anthology/S15-2086}
+}
+```
