@@ -57,10 +57,7 @@ class Enricher(object):
             self.hunpos = self.init_hunpos()
 
     def init_hunpos(self):
-        try:
-            hunpos_dir = self.conf.get('global', 'hunpos_dir')
-        except NoOptionError:
-            hunpos_dir = '/home/recski/projects/hundisambig_compact'
+        hunpos_dir = self.conf.get('global', 'hunpos_dir')
         hunpos_binary = os.path.join(hunpos_dir, 'hunpos-tag')
         hunpos_model = os.path.join(hunpos_dir, 'en_wsj.model')
         return nltk.tag.HunposTagger(hunpos_model, hunpos_binary)
