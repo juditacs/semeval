@@ -132,6 +132,7 @@ class NGramSimilarity(BaseSimilarity):
 class MachineSimilarity(BaseSimilarity):
 
     def __init__(self, cfg):
+        from fourlang.lexicon import Lexicon  # nopep8
         from fourlang.similarity import WordSimilarity as FourlangWordSimilarity  # nopep8
         self.fourlang_sim = FourlangWordSimilarity(cfg)
 

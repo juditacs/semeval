@@ -192,6 +192,11 @@ class AlignAndPenalize(object):
                 if sim >= max_sim[typ]:
                     max_sim[typ] = sim
                     max_j[typ] = j
+
+        for typ in self.similarities.iterkeys():
+            logging.debug("{0} -> {1}: {2} ({3})".format(
+                left['token'], right_tokens[max_j[typ]]['token'],
+                max_sim[typ], typ))
         return max_sim, max_j
 
     def senses_sim(self, word1, word2, simtype):
