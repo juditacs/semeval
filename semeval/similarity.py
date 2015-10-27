@@ -22,6 +22,8 @@ def get_similarity(config, section):
         syn_fn = config.get(section, 'synonyms_file')
         tolower = config.getboolean('global', 'lower')
         return SynonymSimilarity(syn_fn, tolower)
+    if sim_type == 'wordnet_boost':
+        return WordnetBoostSimilarity()
     if sim_type == 'random':
         return RandomSimilarity()
     if sim_type == 'none':
@@ -167,6 +169,14 @@ class SynonymSimilarity(BaseSimilarity):
             return 1.0
         return 0.0
 
+
+class WordnetBoostSimilarity(BaseSimilarity):
+
+    def word_sim(self, word1, word2):
+        D = Wordnet.get_boost(word1, word2)
+        if D is not None:
+            return 0.5 * math.exp(-0.25 * D)
+        return None
 
 class RandomSimilarity(BaseSimilarity):
 
