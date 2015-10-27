@@ -33,6 +33,7 @@ class AlignAndPenalize(object):
         # comput P and T scores
         self.sentence_similarity(pair)
         final_score = self.compute_final_score(pair)
+        # logging.info("pair.features length: {0}".format(len(pair.features)))
         return final_score
 
     def compute_penalty(self, pair):
@@ -186,6 +187,8 @@ class AlignAndPenalize(object):
     def best_alignment(self, left, right_tokens):
         max_sim = defaultdict(lambda: 0.0)
         max_j = defaultdict(lambda: -1)
+        if not right_tokens:
+            raise Exception('empty right_tokens')
         for j, rt in enumerate(right_tokens):
             for typ, simtype in self.similarities.iteritems():
                 sim = self.senses_sim(left, rt, typ)

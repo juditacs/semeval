@@ -1,7 +1,7 @@
 from numpy import linalg
 from sentence import SentencePair
 from collections import defaultdict
-
+import logging
 
 class Regression(object):
 
@@ -13,6 +13,8 @@ class Regression(object):
         self._feat_i = 0
 
     def regression(self):
+        logging.info("similarities: {0}".format(
+            self.aligner.similarities.keys()))
         with open(self.conf.get('regression', 'train')) as f:
             self.train = self.featurize(f)
         with open(self.conf.get('regression', 'train_labels')) as f:
@@ -22,10 +24,14 @@ class Regression(object):
             self.test = self.featurize(f)
         self.train_feats = self.convert_to_table(self.train)
         self.test_feats = self.convert_to_table(self.test)
+        # this created matrices whose rows are sens and columns are sim types
         self.model = linalg.lstsq(self.train_feats, self.train_labels)[0]
+        # logging.info('model: {0}'.format(self.model))
         self.predicted = self.predict_regression(self.test_feats, 0.3)
         with open(self.conf.get('regression', 'outfile'), 'w') as f:
-            f.write('\n'.join(str(int(i if i < 0.5 else 1.0)) for i in self.predicted) + '\n')
+            f.write('\n'.join(str(i) for i in self.predicted) + '\n')
+            # f.write('\n'.join(str(int(i if i < 0.5 else 1.0))
+            #                   for i in self.predicted) + '\n')
 
     def read_labels(self, stream, true_th=0.5):
         labels = []
@@ -54,7 +60,7 @@ class Regression(object):
                     self._feat_order[feat] = 0
                     self._feat_i = 1
                     table[-1] = [sc]
-                elif not feat in self._feat_order:
+                elif feat not in self._feat_order:
                     self._feat_order[feat] = self._feat_i
                     self._feat_i += 1
                     table[-1].append(sc)
@@ -68,7 +74,9 @@ class Regression(object):
             ans = sum(self.model[i] * x for i, x in enumerate(sample))
             if self.conf.getboolean('regression', 'binary_labels'):
                 f = 0 if ans < true_th else 1
-            scores.append(f)
+                scores.append(f)
+            else:
+                scores.append(ans)
         return scores
 
     def print_results(self):
