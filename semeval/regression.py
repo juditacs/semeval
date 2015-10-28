@@ -15,18 +15,23 @@ class Regression(object):
     def regression(self):
         logging.info("similarities: {0}".format(
             self.aligner.similarities.keys()))
+        logging.info('featurizing train...')
         with open(self.conf.get('regression', 'train')) as f:
             self.train = self.featurize(f)
         with open(self.conf.get('regression', 'train_labels')) as f:
             self.train_labels = self.read_labels(f)
         self.reader.clear_pairs()
+        logging.info('featurizing test...')
         with open(self.conf.get('regression', 'test')) as f:
             self.test = self.featurize(f)
+        logging.info('converting...')
         self.train_feats = self.convert_to_table(self.train)
         self.test_feats = self.convert_to_table(self.test)
         # this created matrices whose rows are sens and columns are sim types
+        logging.info('running regression...')
         self.model = linalg.lstsq(self.train_feats, self.train_labels)[0]
         # logging.info('model: {0}'.format(self.model))
+        logging.info('predicting...')
         self.predicted = self.predict_regression(self.test_feats, 0.3)
         with open(self.conf.get('regression', 'outfile'), 'w') as f:
             f.write('\n'.join(str(i) for i in self.predicted) + '\n')

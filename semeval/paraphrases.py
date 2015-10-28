@@ -38,7 +38,7 @@ def main():
     if conf.get('final_score', 'mode') == 'regression':
         r = Regression(conf, reader, aligner)
         r.regression()
-        r.print_results()
+        # r.print_results()
     else:
         pairs = reader.read_sentences(stdin)
         for i, (s1, s2) in enumerate(pairs):

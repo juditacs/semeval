@@ -7,6 +7,14 @@ from gensim.models import Word2Vec
 from resources import Resources
 from wordnet_cache import WordnetCache as Wordnet
 
+def get_similarities(config, section):
+    sim_type = config.get(section, 'type')
+    sim_name = section[11:]
+    if sim_type == 'machine':
+        machine_sim = MachineSimilarity(sim_name, section, config)
+        return machine_sim.get_word_sims()
+    else:
+        return {sim_name: get_similarity(config, section)}
 
 def get_similarity(config, section):
     sim_type = config.get(section, 'type')
@@ -16,8 +24,6 @@ def get_similarity(config, section):
         return NGramSimilarity(n, sim_type, padding)
     if sim_type == 'lsa':
         return LSASimilarity(section, config)
-    if sim_type == 'machine':
-        return MachineSimilarity(config)
     if sim_type == 'synonyms':
         syn_fn = config.get(section, 'synonyms_file')
         tolower = config.getboolean('global', 'lower')
@@ -130,17 +136,30 @@ class NGramSimilarity(BaseSimilarity):
         self.word_cache[(word1, word2)] = sim
         return sim
 
+class WordSimWrapper(BaseSimilarity):
+    def __init__(self, fnc):
+        self.word_sim = fnc
 
 class MachineSimilarity(BaseSimilarity):
 
-    def __init__(self, cfg):
+    def __init__(self, sim_name, section, cfg):
         from fourlang.lexicon import Lexicon  # nopep8
         from fourlang.similarity import WordSimilarity as FourlangWordSimilarity  # nopep8
-        self.fourlang_sim = FourlangWordSimilarity(cfg)
+        self.fourlang_sim = FourlangWordSimilarity(cfg, section)
+        self.sim_name = sim_name
+        self.sim_types = cfg.get(section, 'sim_types').split('|')
+        for sim_type in self.sim_types:
+            if sim_type not in FourlangWordSimilarity.sim_types:
+                raise Exception(
+                    'unknown 4lang similarity: {0}'.format(sim_type))
 
-    def word_sim(self, word1, word2):
-        return self.fourlang_sim.word_similarity(word1, word2, -1, -1)
-
+    def get_word_sims(self):
+        word_sims = {}
+        for sim_type in self.sim_types:
+            sim_name = "{0}_{1}".format(sim_type, self.sim_name)
+            word_sims[sim_name] = WordSimWrapper(
+                self.fourlang_sim.sim_type_to_function(sim_type))
+        return word_sims
 
 class SynonymSimilarity(BaseSimilarity):
 
