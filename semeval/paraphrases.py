@@ -6,6 +6,7 @@ from ConfigParser import ConfigParser
 from read_and_enrich import ReadAndEnrich
 from align_and_penalize import AlignAndPenalize
 from sentence import SentencePair
+# import similarity
 from resources import Resources
 from regression import Regression
 
@@ -47,7 +48,9 @@ def main():
             pair = SentencePair(s1, s2)
             print(aligner.align(pair))
 
+    # similarity.machine_sim.fourlang_sim.lemmatizer.write_cache()
+
 if __name__ == '__main__':
-    # import cProfile
-    # cProfile.run('main()', 'stats.cprofile')
-    main()
+    import cProfile
+    cProfile.run('main()', 'stats.cprofile')
+    # main()

@@ -8,6 +8,7 @@ from resources import Resources
 from wordnet_cache import WordnetCache as Wordnet
 
 def get_similarities(config, section):
+    global machine_sim
     sim_type = config.get(section, 'type')
     sim_name = section[11:]
     if sim_type == 'machine':
