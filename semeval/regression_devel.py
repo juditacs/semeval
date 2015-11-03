@@ -66,7 +66,7 @@ class Regression(object):
         logging.info('predicting...')
         predicted = self.regression_model.predict()
         with open(self.conf.get('regression', 'outfile'), 'w') as f:
-            f.write('\n'.join(str(i) for i in self.predicted) + '\n')
+            f.write('\n'.join(str(i) for i in predicted) + '\n')
         self.dump_if_needed()
         
     def get_regression_model(self):
@@ -80,25 +80,25 @@ class Regression(object):
         else:
             if self.conf.get('ml', 'load_featurizer') == 'true':
                 logging.info('loading featurizer...')
-                self.featurizer = Pickle.load('ml', 'load_featurizer_fn')
+                self.featurizer = cPickle.load('ml', 'load_featurizer_fn')
             else:    
                 reader = ReadAndEnrich(self.conf)
                 aligner = AlignAndPenalize(self.conf)
-                self.featurizer = Featurizer(reader, aligner) 
+                self.featurizer = Featurizer(self.conf, reader, aligner) 
 
             logging.info('featurizing train...')
             with open(self.conf.get('regression', 'train')) as f:
-                train = self.featurize(f)
+                train = self.featurizer.featurize(f)
             with open(self.conf.get('regression', 'train_labels')) as f:
                 train_labels = self.read_labels(f)
-            self.reader.clear_pairs()
+            self.featurizer.reader.clear_pairs()
             logging.info('featurizing test...')
             with open(self.conf.get('regression', 'test')) as f:
-                test = self.featurize(f)
+                test = self.featurizer.featurize(f)
             logging.info('converting...')    
             train_feats = self.convert_to_table(train)
             test_feats = self.convert_to_table(test)
-            self.regression_model = RegressionModel(model_name, train, train_labels, test) 
+            self.regression_model = RegressionModel(model_name, train_feats, train_labels, test_feats) 
 
     def dump_if_needed(self):
 

@@ -8,7 +8,7 @@ from align_and_penalize import AlignAndPenalize
 from sentence import SentencePair
 # import similarity
 from resources import Resources
-from regression import Regression
+from regression_devel import Regression
 
 
 def parse_args():
