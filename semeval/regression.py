@@ -1,4 +1,7 @@
 from numpy import linalg
+from sklearn import linear_model
+from sklearn import kernel_ridge
+from sklearn import svm
 from sentence import SentencePair
 import logging
 import cPickle
@@ -33,10 +36,24 @@ class RegressionModel:
     def train(self):
         if self.model_name == 'linalg_lstsq':
             self.model = linalg.lstsq(self.train_data, self.train_labels)[0]
-    
+        if self.model_name == 'sklearn_linear':
+            self.model = linear_model.LinearRegression()
+            self.model.fit(self.train_data, self.train_labels)
+        if self.model_name == 'sklearn_kernel_ridge':
+            self.model = kernel_ridge.KernelRidge(
+                alpha=2, kernel='polynomial', gamma=None,
+                degree=2, coef0=1, kernel_params=None)
+            self.model.fit(self.train_data, self.train_labels)
+        if self.model_name == 'sklearn_svr':
+            self.model = svm.SVR(kernel='rbf', coef0=1)
+            self.model.fit(self.train_data, self.train_labels)
+
+
     def predict(self):
         if self.model_name == 'linalg_lstsq':
             return self.predict_regression(self.test_data)
+        if self.model_name[:7] == 'sklearn':
+            return self.model.predict(self.test_data)
      
     def predict_regression(self, feats, true_th=0.5):
         scores = []
@@ -44,7 +61,7 @@ class RegressionModel:
             ans = sum(self.model[i] * x for i, x in enumerate(sample))
             scores.append(ans)
         return scores
-        
+
 
 class Regression(object):
 
@@ -78,11 +95,10 @@ class Regression(object):
                 logging.info('loading featurizer...')
                 self.featurizer = cPickle.load(open(self.conf.get(
                     'ml', 'load_featurizer_fn')))
-                                              
             else:    
                 reader = ReadAndEnrich(self.conf)
                 aligner = AlignAndPenalize(self.conf)
-                self.featurizer = Featurizer(self.conf, reader, aligner) 
+                self.featurizer = Featurizer(self.conf, reader, aligner)
 
             logging.info('featurizing train...')
             with open(self.conf.get('regression', 'train')) as f:
@@ -96,7 +112,7 @@ class Regression(object):
             logging.info('converting...')    
             train_feats = self.convert_to_table(train)
             test_feats = self.convert_to_table(test)
-            self.regression_model = RegressionModel(model_name, train_feats, train_labels, test_feats) 
+            self.regression_model = RegressionModel(model_name, train_feats, train_labels, test_feats)
             # model stores config data so that it is possible to reproduce featurizing
             self.regression_model.conf = self.conf
 
@@ -115,7 +131,7 @@ class Regression(object):
                 f = 0 if f < true_th else 1
             labels.append(f)
         return labels
-    
+
     def convert_to_table(self, sample):
         table = []
         for s in sample:
@@ -131,4 +147,4 @@ class Regression(object):
                     table[-1].append(sc)
                 else:
                     table[-1][self._feat_order[feat]] = sc
-        return table            
+        return table
