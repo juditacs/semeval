@@ -71,7 +71,7 @@ class Regression(object):
          self._feat_i = 0
 
     def regression(self):
-
+        
         self.get_regression_model()
         logging.info('training model...')
         self.regression_model.train()
@@ -91,14 +91,9 @@ class Regression(object):
             self.regression_model.model_name = model_name
 
         else:
-            if self.conf.get('ml', 'load_featurizer') == 'true':
-                logging.info('loading featurizer...')
-                self.featurizer = cPickle.load(open(self.conf.get(
-                    'ml', 'load_featurizer_fn')))
-            else:    
-                reader = ReadAndEnrich(self.conf)
-                aligner = AlignAndPenalize(self.conf)
-                self.featurizer = Featurizer(self.conf, reader, aligner)
+            reader = ReadAndEnrich(self.conf)
+            aligner = AlignAndPenalize(self.conf)
+            self.featurizer = Featurizer(self.conf, reader, aligner)
 
             logging.info('featurizing train...')
             with open(self.conf.get('regression', 'train')) as f:
