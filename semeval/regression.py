@@ -71,8 +71,8 @@ class Regression(object):
          self._feat_i = 0
 
     def regression(self):
-        
-        self.get_regression_model()
+        # featurize /load existing model (with its featurized training and test sets)
+        self.get_training_setup()
         logging.info('training model...')
         self.regression_model.train()
         logging.info('predicting...')
@@ -82,7 +82,7 @@ class Regression(object):
             f.write('\n'.join(str(i) for i in predicted) + '\n')
         self.dump_if_needed()
         
-    def get_regression_model(self):
+    def get_training_setup(self):
         
         model_name = self.conf.get('ml', 'model_name')
         if self.conf.get('ml', 'load_model') == 'true':
