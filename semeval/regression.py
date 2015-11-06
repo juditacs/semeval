@@ -49,11 +49,11 @@ class RegressionModel:
             self.model.fit(self.train_data, self.train_labels)
 
 
-    def predict(self):
+    def predict(self, data):
         if self.model_name == 'linalg_lstsq':
-            return self.predict_regression(self.test_data)
+            return self.predict_regression(data)
         if self.model_name[:7] == 'sklearn':
-            return self.model.predict(self.test_data)
+            return self.model.predict(data)
      
     def predict_regression(self, feats, true_th=0.5):
         scores = []
@@ -76,7 +76,8 @@ class Regression(object):
         logging.info('training model...')
         self.regression_model.train()
         logging.info('predicting...')
-        predicted = self.regression_model.predict()
+        predicted = self.regression_model.predict(
+            self.regression_model.test_data)
         with open(self.conf.get('regression', 'outfile'), 'w') as f:
             f.write('\n'.join(str(i) for i in predicted) + '\n')
         self.dump_if_needed()
