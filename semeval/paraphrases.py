@@ -34,13 +34,13 @@ def main():
 
     Resources.set_config(conf)
     Resources.ensure_nltk_packages()
-    reader = ReadAndEnrich(conf)
-    aligner = AlignAndPenalize(conf)
     if conf.get('final_score', 'mode') == 'regression':
-        r = Regression(conf, reader, aligner)
+        r = Regression(conf)
         r.regression()
         # r.print_results()
     else:
+        reader = ReadAndEnrich(conf)
+        aligner = AlignAndPenalize(conf)
         pairs = reader.read_sentences(stdin)
         for i, (s1, s2) in enumerate(pairs):
             if i % 1000 == 0:
