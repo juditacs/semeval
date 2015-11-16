@@ -111,6 +111,7 @@ class Regression(object):
             self.regression_model = RegressionModel(model_name, train_feats, train_labels, test_feats)
             # model stores config data so that it is possible to reproduce featurizing
             self.regression_model.conf = self.conf
+            self.regression_model.feats = self._feat_order
 
     def dump_if_needed(self):
 
