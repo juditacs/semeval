@@ -2,6 +2,7 @@ from numpy import linalg
 from sklearn import linear_model
 from sklearn import kernel_ridge
 from sklearn import svm
+from sklearn.feature_selection import VarianceThreshold
 from sentence import SentencePair
 import logging
 import cPickle
@@ -27,34 +28,50 @@ class Featurizer(object):
 class RegressionModel:
 
     def __init__(self, model_name, train_data, train_labels,
-                 test_data):
+                 test_data, feat_select_thr=0.0):
          self.model_name = model_name
          self.train_data = train_data
          self.train_labels = train_labels
          self.test_data = test_data
+         self.feat_select_thr = feat_select_thr
 
-    def train(self):
+    def select_and_train(self):
+        if self.feat_select_thr != None:
+            self.selector = VarianceThreshold(
+                threshold=self.feat_select_thr)
+            self.selector = self.selector.fit(
+                self.train_data, self.train_labels)
+            self.train(self.selector.transform(self.train_data))
+        else:
+            self.train(self.train_data)
+
+    def train(self, data):
         if self.model_name == 'linalg_lstsq':
-            self.model = linalg.lstsq(self.train_data, self.train_labels)[0]
+            self.model = linalg.lstsq(data, self.train_labels)[0]
         if self.model_name == 'sklearn_linear':
             self.model = linear_model.LinearRegression()
-            self.model.fit(self.train_data, self.train_labels)
+            self.model.fit(data, self.train_labels)
         if self.model_name == 'sklearn_kernel_ridge':
             self.model = kernel_ridge.KernelRidge(
                 alpha=2, kernel='polynomial', gamma=None,
-                degree=2, coef0=1, kernel_params=None)
-            self.model.fit(self.train_data, self.train_labels)
+                degree=3, coef0=1, kernel_params=None)
+            self.model.fit(data, self.train_labels)
         if self.model_name == 'sklearn_svr':
-            self.model = svm.SVR(kernel='rbf', coef0=1)
-            self.model.fit(self.train_data, self.train_labels)
+            self.model = svm.SVR(kernel='poly', degree=3, coef0=1)
+            self.model.fit(data, self.train_labels)
 
+    def select_and_predict(self, data):
+        if self.feat_select_thr != None:
+            return self.predict(self.selector.transform(data))
+        else:
+            return self.predict(data)
 
     def predict(self, data):
         if self.model_name == 'linalg_lstsq':
             return self.predict_regression(data)
         if self.model_name[:7] == 'sklearn':
             return self.model.predict(data)
-     
+
     def predict_regression(self, feats, true_th=0.5):
         scores = []
         for sample in feats:
@@ -74,16 +91,16 @@ class Regression(object):
         # featurize /load existing model (with its featurized training and test sets)
         self.get_training_setup()
         logging.info('training model...')
-        self.regression_model.train()
+        self.regression_model.select_and_train()
         logging.info('predicting...')
-        predicted = self.regression_model.predict(
+        predicted = self.regression_model.select_and_predict(
             self.regression_model.test_data)
         with open(self.conf.get('regression', 'outfile'), 'w') as f:
             f.write('\n'.join(str(i) for i in predicted) + '\n')
         self.dump_if_needed()
-        
+
     def get_training_setup(self):
-        
+
         model_name = self.conf.get('ml', 'model_name')
         if self.conf.get('ml', 'load_model') == 'true':
             logging.info('loading featurized data...')
@@ -108,10 +125,17 @@ class Regression(object):
             logging.info('converting...')    
             train_feats = self.convert_to_table(train)
             test_feats = self.convert_to_table(test)
-            self.regression_model = RegressionModel(model_name, train_feats, train_labels, test_feats)
+            self.regression_model = RegressionModel(
+                model_name, train_feats, train_labels, test_feats)
             # model stores config data so that it is possible to reproduce featurizing
             self.regression_model.conf = self.conf
             self.regression_model.feats = self._feat_order
+        if self.conf.get('ml', 'feat_select') == 'true':
+            self.regression_model.feat_select_thr =\
+                    float(self.conf.get('ml', 'feat_select_thr'))
+        else:
+            self.regression_model.feat_select_thr = None
+
 
     def dump_if_needed(self):
 
