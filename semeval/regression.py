@@ -1,4 +1,4 @@
-from numpy import linalg
+from numpy import linalg, array
 from sklearn import linear_model
 from sklearn import kernel_ridge
 from sklearn import svm
@@ -183,4 +183,4 @@ class Regression(object):
                     table[-1].append(sc)
                 else:
                     table[-1][self._feat_order[feat]] = sc
-        return table
+        return array(table)
