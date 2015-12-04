@@ -1,4 +1,4 @@
-from numpy import linalg
+from numpy import linalg, array
 from sklearn import linear_model
 from sklearn import kernel_ridge
 from sklearn import svm
@@ -28,12 +28,23 @@ class Featurizer(object):
 class RegressionModel:
 
     def __init__(self, model_name, train_data, train_labels,
-                 test_data, feat_select_thr=0.0):
+                 test_data, feat_select_thr=0.0, feats={}):
          self.model_name = model_name
          self.train_data = train_data
          self.train_labels = train_labels
          self.test_data = test_data
          self.feat_select_thr = feat_select_thr
+         self.feats = feats
+
+    
+    def get_selected_feats(self):
+        self.selected_feats = {}
+        if self.feats != {}:
+            reversed_feats = dict([(v,k) for k,v in self.feats.iteritems()])
+            for new, old in enumerate(self.selector.get_support(indices=True)):
+                feat = reversed_feats[old]
+                self.selected_feats[feat] = new
+
 
     def select_and_train(self):
         if self.feat_select_thr != None:
@@ -41,8 +52,12 @@ class RegressionModel:
                 threshold=self.feat_select_thr)
             self.selector = self.selector.fit(
                 self.train_data, self.train_labels)
-            self.train(self.selector.transform(self.train_data))
+            self.selected_train = self.selector.transform(self.train_data) 
+            self.get_selected_feats()
+            self.train(self.selected_train)
         else:
+            self.selector = None
+            self.selected_feats = None
             self.train(self.train_data)
 
     def train(self, data):
@@ -168,4 +183,4 @@ class Regression(object):
                     table[-1].append(sc)
                 else:
                     table[-1][self._feat_order[feat]] = sc
-        return table
+        return array(table)
