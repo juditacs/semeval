@@ -76,10 +76,10 @@ class RegressionModel:
         if self.model_name == 'sklearn_kernel_ridge':
             self.model = kernel_ridge.KernelRidge(
                 alpha=2, kernel=self.kernel, gamma=None,
-                degree=self.degree, coef0=1, kernel_params=None)
+                degree=int(self.degree), coef0=1, kernel_params=None)
             self.model.fit(data, self.train_labels)
         if self.model_name == 'sklearn_svr':
-            self.model = svm.SVR(kernel=self.kernel, degree=self.degree, coef0=1)
+            self.model = svm.SVR(kernel=self.kernel, degree=int(self.degree), coef0=1)
             self.model.fit(data, self.train_labels)
 
     def select_and_predict(self, data):
