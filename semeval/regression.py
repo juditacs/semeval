@@ -66,20 +66,26 @@ class RegressionModel:
             self.selector = None
             self.selected_feats = None
             self.train(self.train_data)
-
+    
     def train(self, data):
         if self.model_name == 'linalg_lstsq':
             self.model = linalg.lstsq(data, self.train_labels)[0]
-        if self.model_name == 'sklearn_linear':
-            self.model = linear_model.LinearRegression()
-            self.model.fit(data, self.train_labels)
-        if self.model_name == 'sklearn_kernel_ridge':
-            self.model = kernel_ridge.KernelRidge(
+        else:    
+            if self.model_name == 'sklearn_linear':
+                self.model = linear_model.LinearRegression()
+            if self.model_name == 'sklearn_ridge':
+                self.model = linear_model.Ridge()
+            if self.model_name == 'sklearn_lasso':
+                self.model = linear_model.Lasso(alpha=0.001)
+            if self.model_name == 'sklearn_elastic_net':
+                self.model = linear_model.ElasticNet(alpha=0.001)
+            if self.model_name == 'sklearn_kernel_ridge':
+                self.model = kernel_ridge.KernelRidge(
                 alpha=2, kernel=self.kernel, gamma=None,
                 degree=int(self.degree), coef0=1, kernel_params=None)
-            self.model.fit(data, self.train_labels)
-        if self.model_name == 'sklearn_svr':
-            self.model = svm.SVR(kernel=self.kernel, degree=int(self.degree), coef0=1)
+            if self.model_name == 'sklearn_svr':
+                self.model = svm.SVR(kernel=self.kernel,
+                                     degree=int(self.degree), coef0=1)
             self.model.fit(data, self.train_labels)
 
     def select_and_predict(self, data):
