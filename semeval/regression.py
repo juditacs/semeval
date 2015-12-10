@@ -32,58 +32,71 @@ class Featurizer(object):
 class RegressionModel:
 
     def __init__(self, model_name, train_data, train_labels,
-                 test_data, feat_select_thr=0.0, feats={}):
+                 test_data, feat_select_thr=0.0, feats={}, kernel='poly',
+                 degree=2):
          self.model_name = model_name
          self.train_data = train_data
          self.train_labels = train_labels
          self.test_data = test_data
          self.feat_select_thr = feat_select_thr
          self.feats = feats
+         self.kernel = kernel
+         self.degree = degree
+         self.selector=None
+         self.selected_feats = None
 
-    
-    def get_selected_feats(self):
+    def get_selected_feats(self, support):
         self.selected_feats = {}
         if self.feats != {}:
             reversed_feats = dict([(v,k) for k,v in self.feats.iteritems()])
-            for new, old in enumerate(self.selector.get_support(indices=True)):
+            for new, old in enumerate(support):
                 feat = reversed_feats[old]
                 self.selected_feats[feat] = new
 
-
-    def select_and_train(self):
+    def preproc_train(self):
         if self.feat_select_thr != None:
             self.selector = VarianceThreshold(
                 threshold=self.feat_select_thr)
             self.selector = self.selector.fit(
-                self.train_data, self.train_labels)
-            self.selected_train = self.selector.transform(self.train_data) 
-            self.get_selected_feats()
-            self.train(self.selected_train)
-        else:
-            self.selector = None
-            self.selected_feats = None
-            self.train(self.train_data)
+                self.preprocessed_data, self.train_labels)
+            self.preprocessed_data = self.selector.transform(self.train_data) 
+            self.get_selected_feats(self.selector.get_support(indices=True))
 
+    def preproc_and_train(self):
+        self.preprocessed_data = self.train_data
+        self.preproc_train()
+        self.train(self.preprocessed_data)
+    
     def train(self, data):
         if self.model_name == 'linalg_lstsq':
             self.model = linalg.lstsq(data, self.train_labels)[0]
-        if self.model_name == 'sklearn_linear':
-            self.model = linear_model.LinearRegression()
+        else:    
+            if self.model_name == 'sklearn_linear':
+                self.model = linear_model.LinearRegression()
+            if self.model_name == 'sklearn_ridge':
+                self.model = linear_model.Ridge()
+            if self.model_name == 'sklearn_lasso':
+                self.model = linear_model.Lasso(alpha=0.001)
+            if self.model_name == 'sklearn_elastic_net':
+                self.model = linear_model.ElasticNet(alpha=0.001)
+            if self.model_name == 'sklearn_kernel_ridge':
+                self.model = kernel_ridge.KernelRidge(
+                alpha=2, kernel=self.kernel, gamma=None,
+                degree=int(self.degree), coef0=1, kernel_params=None)
+            if self.model_name == 'sklearn_svr':
+                self.model = svm.SVR(kernel=self.kernel,
+                                     degree=int(self.degree), coef0=1)
             self.model.fit(data, self.train_labels)
-        if self.model_name == 'sklearn_kernel_ridge':
-            self.model = kernel_ridge.KernelRidge(
-                alpha=2, kernel='polynomial', gamma=None,
-                degree=3, coef0=1, kernel_params=None)
-            self.model.fit(data, self.train_labels)
-        if self.model_name == 'sklearn_svr':
-            self.model = svm.SVR(kernel='poly', degree=3, coef0=1)
-            self.model.fit(data, self.train_labels)
-
-    def select_and_predict(self, data):
+    
+    def preproc_test(self, data):
         if self.feat_select_thr != None:
-            return self.predict(self.selector.transform(data))
+            return self.selector.transform(data)
         else:
-            return self.predict(data)
+            return data
+
+    def preproc_and_predict(self, data):
+        preprocessed_data = self.preproc_test(data)
+        return self.predict(preprocessed_data)
 
     def predict(self, data):
         if self.model_name == 'linalg_lstsq':
@@ -107,7 +120,7 @@ class Regression(object):
          self._feat_i = 0
          for item in conf.items('ml') + conf.items('regression'):
              self.set_attribute(item[0], item[1])
-         if self.experiment:
+         if self.experiment == 'true':
              self.experiment_options = [literal_eval(i[1]) for i
                                         in conf.items('experiment')]
          
@@ -138,6 +151,10 @@ class Regression(object):
             self.binary_labels = value
         if name == 'outfile':
             self.outfile_fn = value
+        if name == 'kernel':
+            self.kernel = value
+        if name == 'degree':
+            self.degree = value
         if name == 'experiment': 
             self.experiment = value
 
@@ -149,35 +166,43 @@ class Regression(object):
                 self.set_attribute(k, v)
 
     def regression(self):
+        # feature or load model and use its data
+        self.get_training_setup()
+        
         if self.experiment == 'true':
             for exp_param in product(*self.experiment_options):
                 logging.info('experimenting with option {}'.format(repr(exp_param)))
                 self.set_exp_params(exp_param)
                 self.regression_item(dump_predicted_labels=False)
         else:
+            # pass training parameters, train and evaluate the model
             self.regression_item()
-
-
+        
+        if self.dump_model == 'true':
+            logging.info('dumping featurized data...')
+            with open(self.dump_model_fn, 'w') as f:
+                cPickle.dump(self.regression_model, f)
+            
     def regression_item(self, dump_predicted_labels=True):
-        # featurize /load existing model (with its featurized training and test sets)
-        self.get_training_setup()
+        self.pass_regression_params()
         logging.info('training model...')
-        self.regression_model.select_and_train()
+        self.regression_model.preproc_and_train()
         logging.info('predicting...')
-        predicted = self.regression_model.select_and_predict(
+        predicted = self.regression_model.preproc_and_predict(
             self.regression_model.test_data)
         with open(self.gold_labels_fn) as f:
                 self.gold_labels = self.read_labels(f)
         logging.info('correlation on test data:{0}'.format(
             repr(pearsonr(predicted, self.gold_labels))))
-        self.dump_if_needed(predicted, dump_predicted_labels)
+        if dump_predicted_labels:
+            with open(self.outfile_fn, 'w') as f:
+                f.write('\n'.join(str(i) for i in predicted) + '\n')
 
     def get_training_setup(self):
 
         if self.load_model == 'true':
             logging.info('loading featurized data...')
             self.regression_model = cPickle.load(open(self.load_model_fn))
-            self.regression_model.model_name = self.model_name
 
         else:
             reader = ReadAndEnrich(self.conf)
@@ -188,7 +213,7 @@ class Regression(object):
             with open(self.train_fn) as f:
                 train = self.featurizer.featurize(f)
             with open(self.train_labels_fn) as f:
-                train_labels = self.read_labels(f)
+                self.train_labels = self.read_labels(f)
             self.featurizer.reader.clear_pairs()
             logging.info('featurizing test...')
             with open(self.test_fn) as f:
@@ -197,26 +222,22 @@ class Regression(object):
             train_feats = self.convert_to_table(train)
             test_feats = self.convert_to_table(test)
             self.regression_model = RegressionModel(
-                self.model_name, train_feats, train_labels, test_feats)
-            # model stores config data so that it is possible to reproduce featurizing
+                self.model_name, train_feats, self.train_labels, test_feats)
+    
+    def pass_regression_params(self):
+            self.regression_model.model_name = self.model_name
             self.regression_model.conf = self.conf
-            self.regression_model.feats = self._feat_order
-        if self.feat_select == 'true':
-            self.regression_model.feat_select_thr =\
+            if self.load_model_fn == 'false':
+                self.regression_model.feats = self._feat_order
+            if hasattr(self, 'kernel'):
+                self.regression_model.kernel = self.kernel
+            if hasattr(self, 'degree'):
+                self.regression_model.degree = self.degree
+            if self.feat_select == 'true':
+                self.regression_model.feat_select_thr =\
                     float(self.feat_select_thr)
-        else:
-            self.regression_model.feat_select_thr = None
-
-    def dump_if_needed(self, predicted, dump_predicted_labels):
-
-        if self.dump_model == 'true':
-            logging.info('dumping featurized data...')
-            with open(self.dump_model_fn, 'w') as f:
-                cPickle.dump(self.regression_model, f)
-        if dump_predicted_labels:
-            with open(self.outfile_fn, 'w') as f:
-                f.write('\n'.join(str(i) for i in predicted) + '\n')
-
+            else:
+                self.regression_model.feat_select_thr = None
 
     def read_labels(self, stream, true_th=0.5):
         labels = []
