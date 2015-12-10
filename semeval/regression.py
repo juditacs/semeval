@@ -42,30 +42,30 @@ class RegressionModel:
          self.feats = feats
          self.kernel = kernel
          self.degree = degree
+         self.selector=None
+         self.selected_feats = None
 
-    
-    def get_selected_feats(self):
+    def get_selected_feats(self, support):
         self.selected_feats = {}
         if self.feats != {}:
             reversed_feats = dict([(v,k) for k,v in self.feats.iteritems()])
-            for new, old in enumerate(self.selector.get_support(indices=True)):
+            for new, old in enumerate(support):
                 feat = reversed_feats[old]
                 self.selected_feats[feat] = new
 
-
-    def select_and_train(self):
+    def preproc_train(self):
         if self.feat_select_thr != None:
             self.selector = VarianceThreshold(
                 threshold=self.feat_select_thr)
             self.selector = self.selector.fit(
-                self.train_data, self.train_labels)
-            self.selected_train = self.selector.transform(self.train_data) 
-            self.get_selected_feats()
-            self.train(self.selected_train)
-        else:
-            self.selector = None
-            self.selected_feats = None
-            self.train(self.train_data)
+                self.preprocessed_data, self.train_labels)
+            self.preprocessed_data = self.selector.transform(self.train_data) 
+            self.get_selected_feats(self.selector.get_support(indices=True))
+
+    def preproc_and_train(self):
+        self.preprocessed_data = self.train_data
+        self.preproc_train()
+        self.train(self.preprocessed_data)
     
     def train(self, data):
         if self.model_name == 'linalg_lstsq':
@@ -87,12 +87,16 @@ class RegressionModel:
                 self.model = svm.SVR(kernel=self.kernel,
                                      degree=int(self.degree), coef0=1)
             self.model.fit(data, self.train_labels)
-
-    def select_and_predict(self, data):
+    
+    def preproc_test(self, data):
         if self.feat_select_thr != None:
-            return self.predict(self.selector.transform(data))
+            return self.selector.transform(data)
         else:
-            return self.predict(data)
+            return data
+
+    def preproc_and_predict(self, data):
+        preprocessed_data = self.preproc_test(data)
+        return self.predict(preprocessed_data)
 
     def predict(self, data):
         if self.model_name == 'linalg_lstsq':
@@ -182,9 +186,9 @@ class Regression(object):
     def regression_item(self, dump_predicted_labels=True):
         self.pass_regression_params()
         logging.info('training model...')
-        self.regression_model.select_and_train()
+        self.regression_model.preproc_and_train()
         logging.info('predicting...')
-        predicted = self.regression_model.select_and_predict(
+        predicted = self.regression_model.preproc_and_predict(
             self.regression_model.test_data)
         with open(self.gold_labels_fn) as f:
                 self.gold_labels = self.read_labels(f)
@@ -223,7 +227,8 @@ class Regression(object):
     def pass_regression_params(self):
             self.regression_model.model_name = self.model_name
             self.regression_model.conf = self.conf
-            self.regression_model.feats = self._feat_order
+            if self.load_model_fn == 'false':
+                self.regression_model.feats = self._feat_order
             if hasattr(self, 'kernel'):
                 self.regression_model.kernel = self.kernel
             if hasattr(self, 'degree'):
