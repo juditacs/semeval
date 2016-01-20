@@ -13,9 +13,9 @@ def parse_args():
     p.add_argument(
         '-c', '--conf', help='config file', default='config', type=str)
     p.add_argument(
-                '-i','--inputs', help='input list, separated by ;', type=str)
+                '-i','--inputs', help='input list, separated by ,', type=str)
     p.add_argument(
-        '-o' ,'--outputs', help='output list, separated by ;', type=str)
+        '-o' ,'--outputs', help='output list, separated by ,', type=str)
     return p.parse_args()
 
 

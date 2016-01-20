@@ -17,13 +17,13 @@ def parse_args():
         '-c', '--conf', help='config file', default='None', type=str)
     p.add_argument(
                 '-inputs','--inputs', help=
-        'input list, for tagging it can be multiple, separated by ;', type=str)
+        'input list, for tagging it can be multiple, separated by ,', type=str)
     p.add_argument(
         '-outputs' ,'--outputs', help=
-        'output list for tagging separated by ;', type=str, default=None)
+        'output list for tagging separated by ,', type=str, default=None)
     p.add_argument(
         '-gold' ,'--gold', help=
-        'gold list for training/tagging separated by ;', type=str, default=None)
+        'gold list for training/tagging separated by ,', type=str, default=None)
     p.add_argument(
         '-model', help='--model', type=str)
     p.add_argument(
