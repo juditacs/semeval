@@ -14,24 +14,25 @@ from numpy import array
 def parse_args():
     p = ArgumentParser()
     p.add_argument(
-        '-c', '--conf', help='config file', default='config', type=str)
+        '-c', '--conf', help='config file', default='None', type=str)
     p.add_argument(
                 '-inputs','--inputs', help=
         'input list, for tagging it can be multiple, separated by ;', type=str)
     p.add_argument(
-        '-outputs' ,'--output', help=
-        'output list for tagging separated by ;', type=str)
+        '-outputs' ,'--outputs', help=
+        'output list for tagging separated by ;', type=str, default=None)
     p.add_argument(
         '-gold' ,'--gold', help=
-        'gold list for training/tagging separated by ;', type=str)
+        'gold list for training/tagging separated by ;', type=str, default=None)
     p.add_argument(
         '-model', help='--model', type=str)
     p.add_argument(
-        '-train', help='--train', type=bool, default=True)
+        '-train', help='--train', action='store_true', default=False)
     p.add_argument(
-        '-tag', help='--tag', type=bool, default=False)
+        '-tag', help='--tag', action='store_true', default=False)
     p.add_argument(
-        '-load_feats', help='--load_feats', type=bool, default=True)
+        '-load_feats', help='--load_feats', action='store_true', default=False)
+
     return p.parse_args()
 
 
@@ -155,42 +156,58 @@ class Trainer(object):
         fh = open(fn, 'w')
         cPickle.dump(self.regression_model, fh)
  
-def Tagger(object):
+class Tagger(object):
 
     def __init__(self, load_feats=True, input_=None, model='model',
                  outputs=None, gold=None, conf=None):
         self.load_feats = load_feats
-        self.input_fns = ','.split(input_)
+        self.input_fns = input_.split(',')
         self.model = model
         if outputs != None:
-            self.output_fns = ','.split(outputs)
+            self.output_fns = outputs.split(',')
         else:
             self.output_fns = ['' for i in range(len(self.input_fns))]
         if gold != None:
-            self.gold_fns = ','.split(gold)
+            self.gold_fns = gold.split(',')
         else:
             self.gold_fns = ['' for i in range(len(self.input_fns))]
         self.conf = conf
     
+    def get_inputs(self):
+        if self.load_feats:
+            return [cPickle.load(open(f))['data'] for f in self.input_fns]
+        else:
+            a = Featurizer(self.conf)
+            l = []
+            for input_ in self.input_fns:
+                a = Featurizer(self.conf)
+                fh = open(input_)
+                logging.info('featurizing input {0}...'.format(input_))
+                sample = a.featurize(fh)
+                logging.info('Converting table...')
+                l.append(a.convert_to_table(sample))
+            return l    
+
     def tag(self):
-        self.regression_model = cPickle.load(self.model)
+        self.regression_model = cPickle.load(open(self.model))
         self.inputs = self.get_inputs()
         for i, ip in enumerate(self.inputs):
             self.predict_and_eval(
-                ip, self.self.output_fns[i], self.self.gold_fns[i] )
+                ip, self.output_fns[i], self.gold_fns[i] )
     
     def predict_and_eval(self, ip, op, gold):
 
-        logging.info('predicting {}...'.format(ip))
+        logging.info('predicting ...'.format(op))
         predicted = self.regression_model.preproc_and_predict(ip)
         if op != '':
             with open(op, 'w') as f:
                 f.write('\n'.join(str(i) for i in predicted) + '\n')
         if gold != None:        
-            with open(gold) as f:
-                gold_labels = self.read_labels(f)
-        logging.info('correlation on {0} test data:{1}'.format(
-            gold, repr(pearsonr(predicted, gold_labels))))
+            with open(gold) as f:    
+                gold_labels = [float(l.strip()) for l in f]
+            
+            logging.info('correlation with {0}:{1}'.format(
+                gold, repr(pearsonr(list(predicted), gold_labels))))
 
 def train(args):
         conf = read_config(args)
