@@ -35,6 +35,7 @@ class Featurizer(object):
 
     def featurize(self, stream):
         sample = []
+        self.reader.pairs = []
         pairs = self.reader.read_sentences(stream)
         for s1, s2 in pairs:
             pair = SentencePair(s1, s2)
@@ -62,23 +63,18 @@ class Featurizer(object):
     def dump_data(self, data, fn):
         fh = open(fn, 'w')
         d = {'data': data, 'config': self.conf, 'feats': self._feat_order}
-        print fn, fh
         cPickle.dump(d, fh)
 
     def preproc_data(self, fn, output_fn):
-        print fn, output_fn
         fh = open(fn)
         sample = self.featurize(fh)
         table = self.convert_to_table(sample)
-        print self._feat_order
         self.dump_data(table, output_fn)
 
 
 def main():
     args = parse_args()
-    print args
     conf = read_config(args)
-    print conf
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s : " +
