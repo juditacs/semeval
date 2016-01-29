@@ -1,4 +1,4 @@
-from sentence import SentencePair
+from sentence import Sentence, SentencePair
 import cPickle
 from read_and_enrich import ReadAndEnrich
 from align_and_penalize import AlignAndPenalize
@@ -38,7 +38,13 @@ class Featurizer(object):
         self.reader.pairs = []
         pairs = self.reader.read_sentences(stream)
         for s1, s2 in pairs:
-            pair = SentencePair(s1, s2)
+            # fallback to no stopword removal
+            if len(s1.tokens) == 0 or len(s2.tokens) == 0:
+                s1_orig = Sentence(s1.sentence, s1.orig_tokens)
+                s2_orig = Sentence(s2.sentence, s2.orig_tokens)
+                pair = SentencePair(s1_orig, s2_orig)
+            else:    
+                pair = SentencePair(s1, s2)
             self.aligner.align(pair)
             sample.append(pair)
         return sample    
