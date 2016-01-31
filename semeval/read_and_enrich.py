@@ -68,11 +68,13 @@ class Enricher(object):
     def add_sentence(self, sentence, tags):
         if not sentence in self.sentences:
             tokens = self.tokenize_and_tag(sentence, tags)
+            self.add_wordnet_senses(tokens)
             # filter tokens if the config option remove_stopwords
             # and/or remove_punctuation is set
             filt_tokens = self.filter_tokens(tokens)
             self.add_wordnet_senses(filt_tokens)
             s = Sentence(sentence, filt_tokens)
+            s.orig_tokens = [t for t in tokens]
             self.sentences[hash(s)] = s
         return self.sentences[hash(sentence)]
 
