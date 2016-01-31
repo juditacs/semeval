@@ -1,7 +1,8 @@
 from sklearn import linear_model
 from sklearn import kernel_ridge
 from sklearn import svm
-from sklearn.feature_selection import VarianceThreshold
+from sklearn.feature_selection import VarianceThreshold, SelectKBest, f_regression
+from sklearn.pipeline import Pipeline
 from scipy.stats import pearsonr
 from argparse import ArgumentParser
 from ConfigParser import ConfigParser
@@ -41,12 +42,11 @@ def read_config(args):
     conf.read(args.conf)
     return conf
 
-
 class RegressionModel:
 
     def __init__(self, model_name, feat_select_thr=0.0,
                  kernel='poly',
-                 degree=2, feats={}, feat_select=True):
+                 degree=2, feats={}, feat_select=True, select_top=50):
          self.model_name = model_name
          self.feat_select_thr = float(feat_select_thr)
          self.feats = feats
@@ -54,6 +54,8 @@ class RegressionModel:
          self.degree = degree
          self.selector=None
          self.selected_feats = None
+         self.manual_select = []
+         self.select_top = select_top
 
     def get_selected_feats(self, support):
         self.selected_feats = {}
@@ -63,51 +65,57 @@ class RegressionModel:
                 feat = reversed_feats[old]
                 self.selected_feats[feat] = new
 
-    def preproc_train(self, train, train_labels):
-        preproc = train
-        if self.feat_select_thr != None:
-            self.selector = VarianceThreshold(
-                threshold=self.feat_select_thr)
-
-            selector = self.selector.fit(
-                preproc, train_labels)
-            preproc = selector.transform(train) 
-            self.get_selected_feats(selector.get_support(indices=True))
-        return preproc    
-            
+    def manual_selection(self, data):
+        i2f = dict([(v, k) for k, v in self.feats.iteritems()])
+        if self.manual_select != []:
+            to_filter_names = []
+            for f in self.feats:
+                needed = True
+                for m in self.manual_select:
+                    if m in f:
+                        needed = False
+                        break
+                if needed:
+                    to_filter_names.append(f)
+        supported = [i for i in i2f if i2f[i] in to_filter_names]            
+        return data[:, sorted(supported)]           
 
     def preproc_and_train(self, train, train_labels):
-        preproc = self.preproc_train(train, train_labels)
-        self.train(preproc, train_labels)
+        self.manual_select = ['collins', 'wikti', 'twitter']
+        self.manual_select = []
+        if self.manual_select != []:
+            train = self.manual_selection(train)
+        self.train(train, train_labels)
     
     def train(self, data, train_labels):
             if self.model_name == 'sklearn_linear':
-                self.model = linear_model.LinearRegression()
+                model = linear_model.LinearRegression()
             if self.model_name == 'sklearn_ridge':
-                self.model = linear_model.Ridge()
+                model = linear_model.Ridge()
             if self.model_name == 'sklearn_lasso':
-                self.model = linear_model.Lasso(alpha=0.001)
+                model = linear_model.Lasso(alpha=0.001)
             if self.model_name == 'sklearn_elastic_net':
-                self.model = linear_model.ElasticNet(alpha=0.001)
+                model = linear_model.ElasticNet(alpha=0.001)
             if self.model_name == 'sklearn_kernel_ridge':
-                self.model = kernel_ridge.KernelRidge(
+                model = kernel_ridge.KernelRidge(
                 alpha=2, kernel=self.kernel, gamma=None,
                 degree=int(self.degree), coef0=1, kernel_params=None)
             if self.model_name == 'sklearn_svr':
-                self.model = svm.SVR(kernel=self.kernel,
+                model = svm.SVR(kernel=self.kernel,
                                      degree=int(self.degree), coef0=1)
-            self.model.fit(data, train_labels)
+            selection = SelectKBest(k=self.select_top)    
+            variance = VarianceThreshold(threshold=self.feat_select_thr)
+            print data.shape
+            self.pipeline = Pipeline(steps=[('univ_select', SelectKBest(k=65, score_func=f_regression)), ('variance', VarianceThreshold(threshold=0.00)), ('model', svm.SVR(C=100, cache_size=200, coef0=0.0, epsilon=0.5, gamma=0.1, kernel='rbf', max_iter=-1, shrinking=True, tol=0.001, verbose=False))])
+
+
+            self.pipeline.fit(data, train_labels)
     
-    def preproc_test(self, data):
-        if self.feat_select_thr != None:
-            return self.selector.transform(data)
-        else:
-            return data
-
     def preproc_and_predict(self, data):
-        preproc = self.preproc_test(data)
-        return self.model.predict(preproc)
-
+        if self.manual_select != []:
+            data = self.manual_selection(data)
+        print data.shape    
+        return self.pipeline.predict(data)
 
 class Trainer(object):
 
@@ -128,7 +136,7 @@ class Trainer(object):
         self.load_feats = load_feats
     
     def get_train_data(self):
-        self.train_labels = array([l.strip() for l in open(self.train_labels_fn)])
+        self.train_labels = array([float(l.strip()) for l in open(self.train_labels_fn)])
         if self.load_feats == True:
             self.train_data = cPickle.load(open(self.input_))['data']
             self.feats = cPickle.load(open(self.input_))['feats']
