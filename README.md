@@ -16,9 +16,21 @@ sudo python setup.py install
 
 Our pipeline relies on the hunpos tool for part-of-speech tagging, which can be downloaded from [this page](https://code.google.com/p/hunpos/downloads/list). All you need to do is download and place the binary `hunpos-tag` and the English model `en_wsj.model` in the directory semeval/hunpos (or change the value of `hunpos_dir` in the configuration file to point to a different location).
 
+In order to run the precompiled binaries on a 64-bit machine, you should download the 32-bit C library:
+```
+sudo dpkg --add-architecture i386 
+sudo apt-get update
+sudo apt-get install libc6:i386 
+```
+
 The machine similarity component also requires the 4lang module. To download and install it, follow [these instructions](https://github.com/kornai/4lang/blob/master/README.md). Then configure it by editing the configuration file `configs/sts\_machine.cfg` based on the instructions in the [4lang README](https://github.com/kornai/4lang/blob/master/README.md#the-config-file)
 
 Some of our configurations also make use of word embeddings, to get the pre-trained models, just download [this archive](http://people.mokk.bme.hu/~recski/4lang/embeddings.tgz) and extract it in your `semeval` directory.
+
+In order to download the required ntlk corpuses, use:
+```
+python -m nltk.downloader stopwords wordnet
+```
 
 # Usage
 
@@ -36,7 +48,6 @@ To use the machine similarity component, run
 ```
 cat sts_test.txt | python semeval/paraphrases.py -c configs/sts_machine.cfg > out
 ```
-
 
 # Regression
 
